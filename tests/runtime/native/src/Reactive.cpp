@@ -10,61 +10,7 @@
 #include "skip/util.h"
 #include "skip/memoize.h"
 
-#include <folly/experimental/FunctionScheduler.h>
-
 using namespace skip;
-
-namespace {
-
-struct ReactiveTimer {
-  static ReactiveTimer& get() {
-    static ReactiveTimer singleton;
-    return singleton;
-  }
-
-  int64_t getReactiveValue(String id_, double intervalInSeconds) {
-    std::string id = id_.toCppString();
-
-    auto it = m_cells.find(id);
-    if (it == m_cells.end()) {
-      auto unit = std::make_shared<TimeUnit>();
-      it = m_cells.emplace(id, unit).first;
-
-      m_scheduler.addFunction(
-          [unit]() {
-            ++unit->m_value;
-            Transaction txn;
-            txn.assign(unit->m_cell, MemoValue(unit->m_value));
-          },
-          std::chrono::milliseconds(int64_t(intervalInSeconds * 1000)),
-          id);
-    }
-
-    return it->second->m_cell.invocation()
-        ->asyncEvaluate()
-        .get()
-        .m_value.asInt64();
-  }
-
- private:
-  folly::FunctionScheduler m_scheduler;
-
-  struct TimeUnit {
-    int64_t m_value = 0;
-    Cell m_cell{MemoValue(0)};
-  };
-
-  skip::fast_map<std::string, std::shared_ptr<TimeUnit>> m_cells;
-
-  ReactiveTimer() {
-    m_scheduler.start();
-  }
-};
-} // anonymous namespace
-
-SkipInt SKIP_Reactive_reactiveTimer(String id, SkipFloat intervalInSeconds) {
-  return ReactiveTimer::get().getReactiveValue(id, intervalInSeconds);
-}
 
 namespace {
 
@@ -112,22 +58,21 @@ struct ReactiveGlobalCache {
   }
 };
 
-folly::Synchronized<ReactiveGlobalCache, std::mutex>::LockedPtr
-getReactiveGlobalCache() {
-  static folly::Synchronized<ReactiveGlobalCache, std::mutex> s_global;
-  return s_global.lock();
-}
+static std::mutex s_globalLock;
+static ReactiveGlobalCache s_globalCache;
 
 thread_local Transaction* t_currentTransaction;
 } // anonymous namespace
 
 SkipInt SKIP_Reactive_nextReactiveGlobalCacheID() {
-  auto locked = getReactiveGlobalCache();
+  std::lock_guard<std::mutex> lock(s_globalLock);
+  auto locked = &s_globalCache;
   return locked->m_nextID++;
 }
 
 void SKIP_Reactive_reactiveGlobalCacheSet(SkipInt id, String key, RObj* value) {
-  auto locked = getReactiveGlobalCache();
+  std::lock_guard<std::mutex> lock(s_globalLock);
+  auto locked = &s_globalCache;
   if (auto txn = t_currentTransaction) {
     locked->set(*txn, id, key, value);
   } else {
@@ -137,7 +82,8 @@ void SKIP_Reactive_reactiveGlobalCacheSet(SkipInt id, String key, RObj* value) {
 }
 
 IObj* SKIP_Reactive_reactiveGlobalCacheGet(SkipInt id, String key) {
-  auto locked = getReactiveGlobalCache();
+  std::lock_guard<std::mutex> lock(s_globalLock);
+  auto locked = &s_globalCache;
   return locked->get(id, key);
 }
 
@@ -160,5 +106,10 @@ void SKIP_Reactive_withTransaction(RObj* callback) {
 }
 
 void Reactive::shutdown() {
-  getReactiveGlobalCache()->cleanup();
+  std::lock_guard<std::mutex> lock(s_globalLock);
+  s_globalCache.cleanup();
+}
+
+SkipInt SKIP_Reactive_unsafe(RObj* value) {
+  return (SkipInt)value;
 }

@@ -1,0 +1,70 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Entry point used for typechecking. Invoke it as
+ *
+ *     skip_check_reactive [ROOT_DIR | FILE]
+ *
+ * It will search upward from the given root path (or the current directory) for a
+ * .skipconfig file. See skipConfig.ml for more.
+ */
+/*****************************************************************************/
+
+untracked fun build(target: String): void {
+  compile(Array[target])
+}
+
+untracked fun writeFile(filename: String, content: String): void {
+  FileSystem.writeTextFile(filename, content)
+}
+
+untracked fun writeStatus(status: String): void {
+  print_string(status)
+}
+
+untracked fun compileLoop(target: String): void {
+  outputs = kConfig.mainConfig.outputFiles;
+  if (outputs.size() != 1) {
+    invariant_violation("skip_server expects exactly one output file");
+  };
+  skdir = Path.dirname(outputs[0]);
+  command = "";
+  errors = Vector[];
+  files = SkipProject.getFilesToAnalyze(target).flatMap(x -> Success(x)) match {
+  | Success(x) -> List::createFromItems(x)
+  | Failure(errorl) ->
+    debug(errorl);
+    invariant_violation("Error: could not find target")
+  };
+  loop {
+    !errors = SkipMain.compileWithErrors(files)
+      .maybeFailure()
+      .default(Vector[])
+      .take(100);
+    errorStr = if (errors.isEmpty()) {
+      "No errors!\n"
+    } else {
+      SkipError.errorsToString(errors)
+    };
+    writeFile(skdir + "/errors", errorStr);
+    if (command == "build" && errors.isEmpty()) {
+      build(target)
+    };
+    status = if (errors.isEmpty()) "OK" else "Error";
+    writeStatus(status);
+    !command = read_line()
+  }
+}
+
+untracked fun main(): void {
+  args = arguments();
+  if (args.size() < 1) {
+    invariant_violation("Usage: skip_server path");
+  };
+  compileLoop(args[0]);
+}

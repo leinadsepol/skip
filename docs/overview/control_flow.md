@@ -4,7 +4,7 @@ title: Control Flow
 ---
 
 Skip includes the usual control flow constructs including `if`, `for/in`, `while`,
-`do` and `loop`. Unlike most languages, Control flow constructs in Skip are expressions
+`do` and `loop`. Unlike most languages, control flow constructs in Skip are expressions
 and they produce values just like other expressions. Control flow expressions may be
 used in any context an expression is expected.
 
@@ -39,7 +39,7 @@ or sequence.
 
 ```
 fun findMax(values: Sequence<Int>): Int {
-  max = Int.min;
+  max = Int::min;
   for (value in values) {
     if (value > max) {
       !max = value
@@ -77,7 +77,7 @@ fun getAgeWhile(name: String, people: Sequence<Person>): Int {
     person = current.fromSome();
     if (person.name == name) {
       break person.age
-    }
+    };
     !current = iter.next();
   } else -1 // Return -1 if the person is not found.
 }

@@ -112,26 +112,14 @@ bool String::operator==(const String& o) const {
 }
 
 ssize_t String::cmp(const String& o) const {
-  // If they're both short compare words directly.
-  auto word1 = sbits();
-  auto word2 = o.sbits();
-  if ((word1 & word2) < 0) {
-    static_assert(sizeof(word1) == sizeof(ssize_t), "size expected");
-    // Ignores flags!
-    static_assert(kUnusedTagBits > 0, "cmp hack won't work with 0 tag bits");
-    auto a = (ssize_t)((size_t)folly::Endian::swap(word1) >> kUnusedTagBits);
-    auto b = (ssize_t)((size_t)folly::Endian::swap(word2) >> kUnusedTagBits);
-    return a - b;
-  } else {
-    const size_t len1 = byteSize();
-    const size_t len2 = o.byteSize();
-    DataBuffer data1;
-    DataBuffer data2;
-    int res = memcmp(data(data1), o.data(data2), std::min(len1, len2));
-    if (res == 0)
-      res = static_cast<ssize_t>(len1) - static_cast<ssize_t>(len2);
-    return res;
-  }
+  const size_t len1 = byteSize();
+  const size_t len2 = o.byteSize();
+  DataBuffer data1;
+  DataBuffer data2;
+  int res = memcmp(data(data1), o.data(data2), std::min(len1, len2));
+  if (res == 0)
+    res = static_cast<ssize_t>(len1) - static_cast<ssize_t>(len2);
+  return res;
 }
 
 const char* String::c_str(char buffer[CSTR_BUFFER_SIZE]) const {
@@ -475,6 +463,17 @@ struct StringIterator final : RObj {
     return rawCurrentImpl(m_byteOffset);
   }
 
+  int64_t rawPrev() {
+    if (m_byteOffset == 0) {
+      return -1;
+    }
+    UChar32 ch = 0;
+    int32_t offset = m_byteOffset;
+    U8_PREV(m_string.unsafeData(), 0, offset, ch);
+    m_byteOffset = offset;
+    return ch;
+  }
+
   void rawDrop(int64_t n) {
     if (n < 0) {
       SKIP_throwInvariantViolation(
@@ -697,6 +696,10 @@ SkipInt SKIP_String_StringIterator__rawCurrent(RObj* i) {
 
 SkipInt SKIP_String_StringIterator__rawNext(RObj* i) {
   return i->cast<StringIterator>().rawNext();
+}
+
+SkipInt SKIP_String_StringIterator__rawPrev(RObj* i) {
+  return i->cast<StringIterator>().rawPrev();
 }
 
 void SKIP_String_StringIterator__rawDrop(RObj* i, SkipInt n) {

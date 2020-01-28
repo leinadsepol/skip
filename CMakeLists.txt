@@ -25,8 +25,8 @@ endif ()
 
 project(${PACKAGE_NAME} LANGUAGES C CXX ASM)
 
-# Force the use of c++14 without GNU extensions
-set(CMAKE_CXX_STANDARD 14)
+# Force the use of c++17 without GNU extensions
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -48,14 +48,6 @@ set(ENABLE_MCROUTER OFF)
 set(ENABLE_GOOGLETEST ON)
 set(JEMALLOC_ENABLED ON)
 
-# In addition to running js tests we use node to build the parsetree.
-find_package(Node)
-
-# If we're not running tests then we don't need hhvm
-if(CONFIGURE_TESTS)
-  find_package(HHVM)
-endif()
-
 find_package(Clang)
 
 # This allows us to strip unused code using -gc-sections
@@ -75,25 +67,9 @@ set(TOOLS_DIR ${CMAKE_SOURCE_DIR}/tools)
 
 add_subdirectory(third-party)
 add_subdirectory(lkg)
-
-function(fetch_depends VAR BACKEND SKIP_TARGET)
-  set(CMD "${LKG_DIR}/skip_depends" ${BACKEND} ${SKIP_TARGET})
-  execute_process(
-    COMMAND ${CMD}
-    OUTPUT_VARIABLE ${VAR}
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE ERR
-    ERROR_VARIABLE ERROR_VAR
-    )
-  if(NOT ERR EQUAL 0)
-    message(FATAL_ERROR "Error '${ERR}' computing depends files '${ERROR_VAR}' with '${CMD}'")
-  endif()
-  string (REPLACE "\n" ";" ${VAR} ${${VAR}})
-  set(${VAR} ${${VAR}} PARENT_SCOPE)
-endfunction()
-
 add_subdirectory(src)
 add_subdirectory(tests)
+
 if (NOT BUILD_TOOLS)
   message(FATAL_ERROR "BUILD_TOOLS not set")
 endif()

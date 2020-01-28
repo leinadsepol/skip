@@ -1,8 +1,8 @@
-#!/usr/bin/env python
-from __future__ import absolute_import, division, print_function, unicode_literals
+#!/usr/bin/env python3
+
 
 import argparse
-import imp
+import importlib
 import logging
 import os
 import pipes
@@ -10,7 +10,6 @@ import subprocess
 import sys
 
 import common
-import skip_js_compile
 import skip_native_compile
 
 
@@ -100,8 +99,6 @@ def main(stack):
         cmd = (binFile.name,)
         if args.watch:
             cmd += ("--watch",)
-    elif args.backend == "js":
-        cmd = skip_js_compile.compile(stack, args)
     else:
         print("Uknown backend %s" % (args.backend))
         exit(2)

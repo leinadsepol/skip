@@ -36,6 +36,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
     CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR
     CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   add_compile_options(-Wmissing-declarations)
+
+  if(CMAKE_COMPILER_IS_GNUCXX AND
+      CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 7.0)
+    add_compile_options(-faligned-new)
+  endif()
 endif()
 
 set(SKIP_RUNTIME_SOURCES
@@ -63,7 +68,6 @@ set(SKIP_RUNTIME_SOURCES
   src/parallel.cpp
   src/Process.cpp
   src/stats.cpp
-  src/stubs.cpp
   src/util.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/src/version.cpp
   )
@@ -174,6 +178,9 @@ set(ld_args
 
 if(NOT APPLE)
   list(APPEND ld_args -lrt)
+  list(APPEND ld_args -lunwind)
+  list(APPEND ld_args -llzma)
+  list(APPEND ld_args -liberty)
 endif()
 
 get_property(prop_defs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY COMPILE_DEFINITIONS)
@@ -187,6 +194,7 @@ list(REMOVE_ITEM cc_args ld_args -mcrc32)
 
 if(DARWIN)
   list(APPEND ld_args -dead_strip)
+  list(APPEND cc_args -isysroot ${CMAKE_OSX_SYSROOT})
 else()
   list(APPEND ld_args -Wl,--gc-sections)
   list(APPEND cc_args -Wno-vla)
@@ -248,3 +256,7 @@ add_library(
   src/sk_standalone.cpp
 )
 target_link_libraries(sk_standalone.${PHASE} folly skip_runtime.${PHASE})
+
+if(NOT APPLE)
+  target_link_libraries(sk_standalone.${PHASE} unwind lzma iberty)
+endif()

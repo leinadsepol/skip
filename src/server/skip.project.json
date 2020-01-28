@@ -1,0 +1,14 @@
+{
+    "skipVersion": "1.0",
+    "programUnits": {
+    "skip_server": {
+      "kind": "Program",
+      "sources": ["skipServer.sk"],
+      "references": [
+        { "path": "../project", "name": "analyze" },
+        { "path": "../outer" },
+        { "path": "../native" }
+      ]
+    }
+  }
+}

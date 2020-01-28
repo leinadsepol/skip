@@ -26,7 +26,7 @@
 #include <boost/io/ios_state.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/version.hpp>
-#include <folly/SharedMutex.h>
+#include <shared_mutex>
 
 #include <exception>
 #include <fstream>
@@ -831,8 +831,8 @@ void Invocation::decref() {
   safeDecref(*asIObj());
 }
 
-folly::MicroLock& Invocation::mutex() const {
-  return m_mutex;
+skip::SpinLock& Invocation::mutex() const {
+  return reinterpret_cast<skip::SpinLock&>(m_mutex);
 }
 
 bool Invocation::inList_lck() const {
@@ -1327,7 +1327,8 @@ struct FutureCaller final : GenericCaller, LeakChecker<FutureCaller> {
       String::CStrBuffer buf;
       auto msg =
           SKIP_getExceptionMessage(const_cast<MutableIObj*>(value.asIObj()));
-      promise.setException(std::runtime_error(msg.c_str(buf)));
+      promise.set_exception(
+          make_exception_ptr(std::runtime_error(msg.c_str(buf))));
     } else {
       AsyncEvaluateResult result;
       result.m_value = std::move(value);
@@ -1336,12 +1337,12 @@ struct FutureCaller final : GenericCaller, LeakChecker<FutureCaller> {
         result.m_watcher = std::move(watcher);
       }
 
-      promise.setValue(std::move(result));
+      promise.set_value(std::move(result));
     }
   }
 
-  folly::Future<AsyncEvaluateResult> getFuture() {
-    return m_promise.getFuture();
+  std::future<AsyncEvaluateResult> getFuture() {
+    return m_promise.get_future();
   }
 
  private:
@@ -1352,10 +1353,10 @@ struct FutureCaller final : GenericCaller, LeakChecker<FutureCaller> {
   Invocation::Ptr m_invocation;
   const bool m_preserveException;
 
-  folly::Promise<AsyncEvaluateResult> m_promise;
+  std::promise<AsyncEvaluateResult> m_promise;
 };
 
-folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluate(
+std::future<AsyncEvaluateResult> Invocation::asyncEvaluate(
     bool preserveException,
     bool subscribeToInvalidations,
     MemoTask::Ptr memoTask) {
@@ -1385,11 +1386,11 @@ folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluate(
   return future;
 }
 
-folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluateAndSubscribe() {
+std::future<AsyncEvaluateResult> Invocation::asyncEvaluateAndSubscribe() {
   return asyncEvaluate(false, true, 0);
 }
 
-folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluate(
+std::future<AsyncEvaluateResult> Invocation::asyncEvaluate(
     MemoTask::Ptr memoTask) {
   return asyncEvaluate(false, false, std::move(memoTask));
 }
@@ -1552,7 +1553,7 @@ void Refresher::continueRefresh_lck(
     auto mask = trace.inactive() & ~((1ull << nextIndex) - 1);
 
     for (auto n = mask; n != 0; n &= n - 1) {
-      auto index = folly::findFirstSet(n) - 1;
+      auto index = skip::findFirstSet(n) - 1;
       auto child = trace[index].target();
 
       auto childLock = lockify(*child);
@@ -1598,7 +1599,7 @@ void Refresher::continueRefresh_lck(
       // inputs were invalidated at m_latestVisibleWhenStarted + 1, which
       // is the first txn where that could have happened.
       DEBUG_TRACE(
-          "Input " << trace[folly::findFirstSet(trace.inactive()) - 1].target()
+          "Input " << trace[skip::findFirstSet(trace.inactive()) - 1].target()
                    << " for " << this << " still inactive so reducing end from "
                    << m_end << " to " << (m_latestVisibleWhenStarted + 1));
       m_end = std::min(m_end, m_latestVisibleWhenStarted + 1);
@@ -3396,7 +3397,7 @@ Refcount Revision::currentRefcount() const {
   return m_refcount.load(std::memory_order_relaxed);
 }
 
-static folly::SharedMutex s_cleanupListsMutex;
+static std::shared_mutex s_cleanupListsMutex;
 
 // Protected by cleanupsMutex().
 static std::map<TxnId, CleanupList> s_cleanupLists;
@@ -3412,9 +3413,9 @@ static std::map<TxnId, CleanupList> s_cleanupLists;
  * reader. In any case the txn actually selected in returned as the second
  * tuple member.
  */
-static std::tuple<CleanupList*, TxnId, folly::SharedMutex::ReadHolder>
+static std::tuple<CleanupList*, TxnId, std::unique_lock<std::shared_mutex>>
 findOrCreateLockedCleanupList(TxnId txn) {
-  folly::SharedMutex::ReadHolder rlock(s_cleanupListsMutex);
+  std::unique_lock lock(s_cleanupListsMutex);
 
   // If the user asked for TxnId zero, it means they want the latest one.
   // We can only properly compute that here after taking the lock.
@@ -3426,23 +3427,14 @@ findOrCreateLockedCleanupList(TxnId txn) {
   if (LIKELY(it != s_cleanupLists.end())) {
     cl = &it->second;
   } else {
-    // Take a write lock and insert the list (if it wasn't just created by
-    // some other thread).
-    rlock.unlock();
-    folly::SharedMutex::WriteHolder wlock(s_cleanupListsMutex);
-
-    // We need to refresh queryTxn since we released the lock temporarily.
+    // TODO: figure out if we still need this.
     queryTxn = txn ? txn : newestVisibleTxn();
 
     // Create this if it doesn't exist, or reuse it if it does.
     cl = &s_cleanupLists[queryTxn];
-
-    // Downgrade to a read lock.
-    // @lint-ignore HOWTOEVEN1
-    rlock = folly::SharedMutex::ReadHolder(std::move(wlock));
   }
 
-  return std::make_tuple(cl, queryTxn, std::move(rlock));
+  return std::make_tuple(cl, queryTxn, std::move(lock));
 }
 
 static void registerCleanup(Invocation& inv, TxnId txn) {
@@ -3496,7 +3488,7 @@ static void runReadyCleanups() {
   Invocation* tail = nullptr;
 
   // Quickly delete any old CleanupLists and chain their members into head+tail.
-  for (folly::SharedMutex::WriteHolder lock(s_cleanupListsMutex);;) {
+  for (std::unique_lock lock(s_cleanupListsMutex);;) {
     auto it = s_cleanupLists.begin();
 
     auto newestVisible = newestVisibleTxn();
@@ -3567,7 +3559,7 @@ void assertNoCleanups() {
   bool foundNonEmptyCleanupList = false;
 
   {
-    folly::SharedMutex::ReadHolder lock(s_cleanupListsMutex);
+    std::shared_lock lock(s_cleanupListsMutex);
 
     for (auto& vp : s_cleanupLists) {
       std::cerr << "Found non-empty cleanup list for txn " << vp.first << '\n';
@@ -3580,7 +3572,7 @@ void assertNoCleanups() {
   if (foundNonEmptyCleanupList) {
     runReadyCleanups();
 
-    folly::SharedMutex::ReadHolder lock(s_cleanupListsMutex);
+    std::shared_lock lock(s_cleanupListsMutex);
     std::cerr << "Re-ran cleanups, found " << s_cleanupLists.size() << '\n';
   }
 
@@ -3670,12 +3662,19 @@ void Context::addDependency(Revision& lockedInput) {
   assertLocked(lockedInput);
 
   if (!lockedInput.isPure_lck()) {
-    // No need for the 'lockify' overhead here.
-    std::lock_guard<folly::MicroLock> lock{m_mutex};
+    try {
+      // No need for the 'lockify' overhead here.
+      m_mutex.lock();
 
-    bool freshlyInserted = m_calls.emplace(&lockedInput, m_calls.size()).second;
-    if (freshlyInserted) {
-      lockedInput.incref();
+      bool freshlyInserted =
+          m_calls.emplace(&lockedInput, m_calls.size()).second;
+      if (freshlyInserted) {
+        lockedInput.incref();
+      }
+      m_mutex.unlock();
+    } catch (const std::exception& ex) {
+      m_mutex.unlock();
+      throw(ex);
     }
   }
 }
@@ -3699,7 +3698,7 @@ std::vector<Revision::Ptr> Context::linearizeTrace() {
   return v;
 }
 
-folly::MicroLock& Context::mutex() const {
+SpinLock& Context::mutex() const {
   return m_mutex;
 }
 
@@ -3856,7 +3855,7 @@ std::unique_lock<std::mutex> Transaction::commitWithoutUnlock(
   }
 
   if (changed) {
-    folly::SharedMutex::WriteHolder lock(s_cleanupListsMutex);
+    std::unique_lock lock(s_cleanupListsMutex);
 
     // Steal the vector of watchers to notify, so we can notify them below.
     invalidationWatchersToNotify.swap(
@@ -3922,7 +3921,7 @@ Invocation::Ptr Cell::invocation() const {
   return m_invocation;
 }
 
-folly::MicroLock& Cell::mutex() const {
+SpinLock& Cell::mutex() const {
   return m_invocation->mutex();
 }
 
@@ -4185,38 +4184,45 @@ void dumpRevisions(const Invocation& inv) {
 }
 
 void InvocationHelperBase::static_evaluate_helper(
-    folly::Future<MemoValue>&& future) {
-  auto ctx = Context::current();
+    std::future<MemoValue>&& future) {
+  std::cerr << "Internal error: you have reached static_evaluate_helper\n";
+  exit(70);
+  // TODO: re-enable this.
+  //
+  // auto ctx = Context::current();
+  //
+  // std::move(future)
+  //    .thenValue(
+  //        [ctx](MemoValue&& value) { ctx->evaluateDone(std::move(value)); })
+  //    .thenError(
+  //        folly::tag_t<std::exception>{}, [ctx](const std::exception& e) {
+  // To record an exception in the memoizer, we need to create an
+  // interned Exception object. Currently the only way to produce one
+  // is to allocate on the the obstack, then intern that.
+  //
+  // If we already have an Obstack (i.e. this thread has a Process),
+  // just use that one, but politely pop the PosScope. If we don't,
+  // create a throwaway Process and use its Obstack. That's pretty
+  // wasteful but this just the error case, which is hopefully
+  // uncommon.
+  //
+  // It might be better to intern from a non-obstack memory image
+  // of this Exception, but there's no super-easy way to form one.
 
-  std::move(future)
-      .then([ctx](MemoValue&& value) { ctx->evaluateDone(std::move(value)); })
-      .onError([ctx](const std::exception& e) {
-        // To record an exception in the memoizer, we need to create an
-        // interned Exception object. Currently the only way to produce one
-        // is to allocate on the the obstack, then intern that.
-        //
-        // If we already have an Obstack (i.e. this thread has a Process),
-        // just use that one, but politely pop the PosScope. If we don't,
-        // create a throwaway Process and use its Obstack. That's pretty
-        // wasteful but this just the error case, which is hopefully uncommon.
-        //
-        // It might be better to intern from a non-obstack memory image
-        // of this Exception, but there's no super-easy way to form one.
+  //          auto report = [ctx, msg = std::string(e.what())]() {
+  //            MemoValue excVal;
+  //            {
+  //              Obstack::PosScope obstackScope;
+  //              auto& obstack = Obstack::cur();
+  //              auto ex = SKIP_makeRuntimeError(String(msg));
+  //              auto obj = obstack.intern(ex).asPtr();
+  //              excVal = MemoValue(obj, MemoValue::Type::kException, true);
+  //            }
+  //            ctx->evaluateDone(std::move(excVal));
+  //          };
 
-        auto report = [ctx, msg = std::string(e.what())]() {
-          MemoValue excVal;
-          {
-            Obstack::PosScope obstackScope;
-            auto& obstack = Obstack::cur();
-            auto ex = SKIP_makeRuntimeError(String(msg));
-            auto obj = obstack.intern(ex).asPtr();
-            excVal = MemoValue(obj, MemoValue::Type::kException, true);
-          }
-          ctx->evaluateDone(std::move(excVal));
-        };
-
-        report();
-      });
+  //          report();
+  //        });
 }
 
 InvalidationWatcher::InvalidationWatcher(Refcount refcount)
@@ -4273,7 +4279,7 @@ void InvalidationWatcher::invalidate() {
   assert(!isSubscribed());
 #endif
 
-  m_promise.setValue(folly::Unit());
+  m_promise.set_value();
 }
 
 bool InvalidationWatcher::isSubscribed() {

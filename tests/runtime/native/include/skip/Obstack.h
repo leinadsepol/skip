@@ -13,14 +13,11 @@
 #include "Task.h"
 #include "detail/Refs.h"
 
-#include <folly/MicroLock.h>
-
 #include <functional>
 #include <memory>
+#include <mutex>
 
 namespace skip {
-
-struct HhvmHandle;
 
 /*
  * Holder for an RObj* that keeps it alive as a root, without preventing
@@ -59,13 +56,7 @@ struct RObjHandle final : private boost::noncopyable {
   // without owning the entire Process whose Obstack contains this handle.
   // The reasoning is that an external Process only needs to figure out which
   // Process to call scheduleTask on.
-  //
-  // Possible optimization: overlap this with the low two bits of some
-  // other field to save memory. This requires some care to not mess
-  // with the lock state when updating that other pointer. Using an
-  // atomic xor to change all but the low two bits owned by the mutex
-  // is one possible answer.
-  folly::MicroLock m_ownerMutex;
+  std::mutex m_ownerMutex;
 };
 
 /*
@@ -159,12 +150,6 @@ struct Obstack : ObstackBase {
   void verifyInvariants() const;
   void TEST_stealObjects(SkipObstackPos note, Obstack& source);
 #endif
-
-  // Used by facebook/extensions/skip/ext_skip.cpp
-  HhvmHandle* wrapHhvmHeapObject(HhvmHeapObjectPtr obj, bool incref = true);
-  void markHhvmObjects(
-      std::function<void(HhvmHeapObjectPtr** ptr, size_t count)> markCallback);
-  void updateHhvmHeapObject(HhvmHandle* handle, HhvmHeapObjectPtr obj);
 
   // Handles allow external code to safely reference an obstack object
   // that may move. Multiple handles for the same object are allowed.

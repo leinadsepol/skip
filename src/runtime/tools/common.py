@@ -48,9 +48,9 @@ resource.setrlimit(resource.RLIMIT_CORE,
 
 
 try:
-    RED = subprocess.check_output(('tput', 'setaf', '1'))
-    GREEN = subprocess.check_output(('tput', 'setaf', '2'))
-    NORMAL = subprocess.check_output(('tput', 'sgr0'))
+    RED = subprocess.check_output(('tput', 'setaf', '1')).decode()
+    GREEN = subprocess.check_output(('tput', 'setaf', '2')).decode()
+    NORMAL = subprocess.check_output(('tput', 'sgr0')).decode()
 except subprocess.CalledProcessError:
     RED, GREEN, NORMAL = (str(''), str(''), str(''))
 
@@ -84,8 +84,7 @@ def commonArguments(needsBackend=True, backend=None):
         help='Print full skip_to_llvm command then exit')
 
     if needsBackend:
-        parser.add_argument('backend_gen', help='is one of skip_js_exec, '
-                            'skip_native_exec')
+        parser.add_argument('backend_gen', help='is one of skip_native_exec')
 
     if backend:
         global _shortBackend
@@ -214,10 +213,7 @@ def getShortBackend():
         _shortBackend = None
         return None
     _shortBackend = {
-        'skip_js_exec': 'js',
-        'skip_js_self_exec': 'js_self',
         'skip_native_exec': 'native',
-        'skip_wasm_exec': 'wasm',
     }.get(os.path.basename(ARGS.backend_gen))
     if not _shortBackend:
         print('%sError: unknown backend_gen type (%r)%s'
@@ -427,14 +423,14 @@ class RunCommand(object):
         if not cmd:
             return
 
-        logger.debug('running: %r', ' '.join(map(pipes.quote, cmd)))
+        logger.debug('running: %r', cmd)
 
         dst_we = RunCommand._computeDstWithoutExt(test)
         ensureDirPathExists(os.path.dirname(dst_we))
 
         with open(self.stdout_name, 'wb') as stdout, \
              open(self.stderr_name, 'wb') as stderr, \
-             open(self.res_name, 'wb') as resout, \
+             open(self.res_name, 'w') as resout, \
              open(os.devnull, 'rb') as stdin:
             start = time.time()
             p = subprocess.Popen(
@@ -584,9 +580,8 @@ class RunCommand(object):
         data = data.strip()
         if data:
             print('  %s%s:%s' % (RED, name, NORMAL))
-            data = data.decode('ascii', 'ignore')
             if limit:
-                lines = data.split('\n')
+                lines = data.decode().split('\n')
                 if len(lines) > limit[0]:
                     lines = ['<output truncated>'] + lines[-limit[0]:]
                 lines = map(lambda x: x if (len(x) < limit[1]) else (x[:limit[1] - 3] + '...'), lines)

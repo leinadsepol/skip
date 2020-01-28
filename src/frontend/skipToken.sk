@@ -9,15 +9,19 @@ module Token;
 
 extension class Token{} {
   fun stringLiteralValue(): String {
-    accumulateStringValue("", this.value.sub(1, this.value.length() - 2), 0)
+    stringValue(
+      this.value.getIter().forward(1).slice(this.value.getEndIter().rewind(1)),
+    )
   }
 
   fun templateStringLiteralValue(): String {
-    accumulateStringValue("", this.value, 0)
+    stringValue(this.value)
   }
 
   fun charLiteralValue(): Char {
-    charLiteral(this.value.sub(1, this.value.length() - 2))
+    charLiteral(
+      this.value.getIter().forward(1).slice(this.value.getEndIter().rewind(1)),
+    )
   }
 
   fun isHexLiteralToken(): Bool {
@@ -36,7 +40,7 @@ extension class Token{} {
     if (isIntMinString(value)) {
       Int::min
     } else if (isHexLiteralString(value)) {
-      Chars.hexDigitsToInt(value.sub(2, value.length() - 2))
+      Chars.hexDigitsToInt(value.getIter().forward(2).collectString())
     } else {
       value.toInt()
     }
@@ -72,48 +76,41 @@ fun isHexLiteralString(value: String): Bool {
 }
 
 fun charLiteralCode(value: String): Int {
-  if (value[0] != '\\') {
-    value[0].code()
-  } else {
-    value[1] match {
-    | '0' -> 0x00
-    | 'a' -> 0x07
-    | 'b' -> 0x08
-    | 'e' -> 0x1B
-    | 'f' -> 0x0C
-    | 'n' -> 0x0A
-    | 'r' -> 0x0D
-    | 't' -> 0x09
-    | 'v' -> 0x0B
-    | '\\' -> 0x5C
-    | '\'' -> 0x27
-    | '"' -> 0x22
-    | '`' -> 0x60
-    | '$' -> 0x24
-    | '{' -> 0x7B
-    | 'x' -> Chars.hexDigitsToInt(value.sub(2, 2))
-    | 'u' -> Chars.hexDigitsToInt(value.sub(2, 4))
-    | 'U' -> Chars.hexDigitsToInt(value.sub(2, 8))
-    | _ -> invariant_violation("Unexpected simple char escape")
+  i = value.getIter();
+  i.next() match {
+  | Some(ch) if (ch != '\\') -> ch.code()
+  | Some _ ->
+    i.next() match {
+    | Some(ch) ->
+      ch match {
+      | '0' -> 0x00
+      | 'a' -> 0x07
+      | 'b' -> 0x08
+      | 'e' -> 0x1B
+      | 'f' -> 0x0C
+      | 'n' -> 0x0A
+      | 'r' -> 0x0D
+      | 't' -> 0x09
+      | 'v' -> 0x0B
+      | '\\' -> 0x5C
+      | '\'' -> 0x27
+      | '"' -> 0x22
+      | '`' -> 0x60
+      | '$' -> 0x24
+      | '{' -> 0x7B
+      | 'x' -> Chars.hexDigitsToInt(String::fromChars(i.take(2).collect(Array)))
+      | 'u' -> Chars.hexDigitsToInt(String::fromChars(i.take(4).collect(Array)))
+      | 'U' -> Chars.hexDigitsToInt(String::fromChars(i.take(8).collect(Array)))
+      | _ -> invariant_violation("Unexpected simple char escape")
+      }
+    | None() -> invariant_violation("Unexpected end of string after escape")
     }
-  }
+  | None() -> -1
+  };
 }
 
 fun charLiteral(value: String): Char {
   Char::fromCode(charLiteralCode(value))
-}
-
-fun charLiteralLength(value: String, index: Int): Int {
-  if (value[index] != '\\') {
-    1
-  } else {
-    value[index + 1] match {
-    | 'x' -> 4
-    | 'u' -> 6
-    | 'U' -> 10
-    | _ -> 2
-    }
-  }
 }
 
 // Note this does not include quotes around the result.
@@ -151,15 +148,31 @@ fun escapeStringLiteralValue(s: String): String {
   s.chars().map(escapeCharLiteralValue).join("")
 }
 
-fun accumulateStringValue(acc: String, value: String, index: Int): String {
-  if (index == value.length()) {
-    acc
-  } else {
-    length = charLiteralLength(value, index);
-    accumulateStringValue(
-      acc + charLiteral(value.sub(index, length)),
-      value,
-      index + length,
-    )
+// advance iter past a single literal char
+// iter must be at a valid literal char
+fun skipLiteralChar(iter: mutable String.StringIterator): void {
+  if (iter.next().fromSome() == '\\') {
+    length = iter.next().fromSome() match {
+    | 'x' -> 2
+    | 'u' -> 4
+    | 'U' -> 8
+    | _ -> 0
+    };
+    _ = iter.drop(length);
   }
+}
+
+fun stringValue(value: String): String {
+  // shortcut the common case
+  if (!value.contains("\\")) return value;
+
+  chars = mutable Vector[];
+  iter = value.getIter();
+  do {
+    charStart = iter.clone();
+    skipLiteralChar(iter);
+    chars.push(charLiteral(charStart.substring(iter)));
+  } while (!iter.atEnd());
+
+  String::fromChars(chars.toArray())
 }

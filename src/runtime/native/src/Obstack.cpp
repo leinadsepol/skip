@@ -13,8 +13,6 @@
 #include "skip/intern.h"
 #include "skip/memory.h"
 #include "skip/objects.h"
-#include "skip/plugin/hhvm.h"
-#include "skip/plugin-extc.h"
 #include "skip/Process.h"
 #include "skip/Refcount.h"
 #include "skip/set.h"
@@ -34,8 +32,6 @@
 #include <vector>
 #include <array>
 
-#include <folly/small_vector.h>
-#include <folly/Format.h>
 #include <folly/ClockGettimeWrappers.h>
 
 #if ENABLE_VALGRIND
@@ -199,21 +195,6 @@ struct ObjectSize final {
   size_t m_metadataSize;
   size_t m_userSize;
 };
-
-template <class... Args>
-void logIt(Args&&... args) {
-  folly::writeTo(stderr, folly::format(std::forward<Args>(args)...));
-}
-
-std::string prettyBytes(size_t n) {
-  // bytes suffix kB, MB, GB, ... goes up by 1024 each
-  return folly::prettyPrint(n, folly::PRETTY_BYTES);
-}
-
-std::string prettyCount(size_t n) {
-  // counts k, M, G, ... up by 1000 each
-  return folly::prettyPrint(n, folly::PRETTY_UNITS_METRIC);
-}
 
 #if OBSTACK_VERIFY_NOTE
 const auto kVerifyNote = parseEnv("OBSTACK_VERIFY_NOTE", 0) != 0;
@@ -496,7 +477,7 @@ void ObstackDetail::printMemoryStatistics(Obstack& obstack) const {
 
 void ObstackDetail::printObjectSize(const RObj* o) const {
   size_t total = 0;
-  folly::small_vector<const RObj*, 8> pending;
+  std::vector<const RObj*> pending;
   skip::fast_set<const RObj*> seen;
   seen.insert(o);
   pending.push_back(o);
@@ -512,12 +493,7 @@ void ObstackDetail::printObjectSize(const RObj* o) const {
     });
   }
 
-  folly::writeTo(
-      stderr,
-      folly::format(
-          "Obstack size of {0}: {1}\n",
-          (void*)o,
-          folly::prettyPrint(total, folly::PRETTY_BYTES)));
+  fprintf(stderr, "Obstack size of %p: %lu\n", (void*)o, total);
 }
 
 size_t Obstack::usage(SkipObstackPos noteAddr) const {
@@ -847,122 +823,6 @@ void ObstackDetail::stealIObj(IObj* iobj, Pos pos) {
   }
 }
 
-HhvmHandle* ObstackDetail::wrapHhvmObject(
-    HhvmObjectPtr obj,
-    Obstack& obstack,
-    bool incref) {
-  // We have to extract the ObjectData from the Object
-  auto objData = *reinterpret_cast<HhvmObjectDataPtr*>(obj);
-  return wrapHhvmHeapObject(objData, obstack, incref);
-}
-
-HhvmHandle*
-ObstackDetail::wrapHhvmArray(HhvmArrayPtr obj, Obstack& obstack, bool incref) {
-  // We have to extract the ArrayData from the Array
-  auto objData = *reinterpret_cast<HhvmArrayDataPtr*>(obj);
-  return wrapHhvmHeapObject(objData, obstack, incref);
-}
-
-HhvmHandle* ObstackDetail::wrapHhvmHeapObject(
-    HhvmHeapObjectPtr objData,
-    Obstack& obstack,
-    bool incref) {
-  updateHhvmHeapObjectMapping();
-  auto inserted =
-      m_hhvmHeapObjectMapping.insert(std::make_pair(objData, nullptr));
-  if (inserted.second) {
-    // didn't already exist
-    inserted.first->second = HhvmHandle::createNew(obstack, objData, incref);
-  } else {
-    assert(inserted.first->second->heapObject() == objData);
-    if (!incref) {
-      // because the caller is expecting us to take ownership of the object we
-      // need to decref it
-      SKIP_HHVM_decref(inserted.first->second);
-    }
-  }
-  return inserted.first->second;
-}
-
-HhvmHandle* Obstack::wrapHhvmHeapObject(
-    HhvmHeapObjectPtr objData,
-    bool incref) {
-  return m_detail->wrapHhvmHeapObject(objData, *this, incref);
-}
-
-void ObstackDetail::unregisterHhvmHandle(HhvmHandle* handle) {
-  updateHhvmHeapObjectMapping();
-  m_hhvmHeapObjectMapping.erase(handle->heapObject());
-}
-
-void ObstackDetail::markHhvmObjects(
-    std::function<void(HhvmHeapObjectPtr** ptr, size_t count)> markCallback) {
-  if (m_hhvmHeapObjectMapping.empty())
-    return;
-
-  // We have to scan the values (rather than the keys) so if HHVM moves them
-  // Skip will immediately see the moved values.
-  std::vector<HhvmHeapObjectPtr*> ptrs(m_hhvmHeapObjectMapping.size(), nullptr);
-  size_t idx = 0;
-  for (auto it : m_hhvmHeapObjectMapping) {
-    ptrs[idx++] = &it.second->heapObjectRef();
-  }
-  m_hhvmHeapObjectMappingValid = false;
-  markCallback(ptrs.data(), idx);
-}
-
-void Obstack::markHhvmObjects(
-    std::function<void(HhvmHeapObjectPtr** ptr, size_t count)> markCallback) {
-  m_detail->markHhvmObjects(markCallback);
-}
-
-void Obstack::updateHhvmHeapObject(HhvmHandle* handle, HhvmHeapObjectPtr obj) {
-  m_detail->updateHhvmHeapObject(handle, obj);
-}
-
-void ObstackDetail::updateHhvmHeapObject(
-    HhvmHandle* handle,
-    HhvmHeapObjectPtr obj) {
-  auto& ref = handle->heapObjectRef();
-  if (ref != obj) {
-    if (m_hhvmHeapObjectMappingValid) {
-      m_hhvmHeapObjectMapping.erase(ref);
-      m_hhvmHeapObjectMapping[obj] = handle;
-    }
-    ref = obj;
-  }
-}
-
-void ObstackDetail::setHeapObjectMappingInvalid() {
-  m_hhvmHeapObjectMappingValid = false;
-}
-
-void ObstackDetail::updateHhvmHeapObjectMapping() {
-  if (m_hhvmHeapObjectMappingValid)
-    return;
-  m_hhvmHeapObjectMappingValid = true;
-
-  // After a GC it's possible that HHVM could have moved its objects so the
-  // mapping could now be incorrect.  We expect that few objects would have been
-  // moved.
-  folly::small_vector<std::pair<HhvmHeapObjectPtr, HhvmHandle*>, 8>
-      movedPointers;
-  for (auto i : m_hhvmHeapObjectMapping) {
-    if (i.first != i.second->heapObject()) {
-      movedPointers.push_back(i);
-    }
-  }
-  // Erase any pointers that have been moved.
-  for (auto i : movedPointers) {
-    m_hhvmHeapObjectMapping.erase(i.first);
-  }
-  // And add them back in.
-  for (auto i : movedPointers) {
-    m_hhvmHeapObjectMapping.insert(
-        std::make_pair(i.second->heapObject(), i.second));
-  }
-}
-
 void* Obstack::calloc(size_t sz) {
   return memset(alloc(sz), 0, sz);
 }
@@ -1057,7 +917,7 @@ void ObstackDetail::sweepIObjs(Obstack& obstack, Pos markPos, Pos collectNote) {
   // alive have had their m_position changed but were not moved in the chain.
 
   // list of IObj* we will decref after re-positioning marked refs.
-  folly::small_vector<IObj*, 4> pendingDecrefs;
+  std::vector<IObj*> pendingDecrefs;
 
   // We've been putting marked IObjs at markPos(). Once we see
   // anything older than that we can stop.
@@ -1216,9 +1076,7 @@ struct ObstackDetail::Collector {
     WorkItem(RObj* target, Type& type) : m_target(target), m_type(&type) {}
   };
 
-  // TODO do stats on this queue size justify small_vecotor? chunked list,
-  // dequeue, or plain vector might be better depending on size distribution.
-  folly::small_vector<WorkItem, 8> m_workQueue;
+  std::vector<WorkItem> m_workQueue;
 
   // When copying, this data is used instead of the actual chunk for
   // the first chunk (which is shared between old and young objects).
@@ -1255,27 +1113,29 @@ struct ObstackDetail::Collector {
       const auto total = m_obstack.m_detail->totalUsage(m_obstack);
       const auto workVol = scanVol + m_copyVol + m_shadowVol;
       if (workVol > std::max(freed, kChunkSize) * kGCSquawk) {
-        logIt(
-            "{} low-yield: eligible {} min {} scan {} copy {} "
-            "freed {} survived {} total {}\n",
+        fprintf(
+            stderr,
+            "%s low-yield: eligible %lu min %lu scan %lu copy %lu "
+            "freed %lu survived %lu total %lu\n",
             kCollectModeNames[(int)m_mode],
-            prettyBytes(m_preUsage),
-            prettyBytes(min),
-            prettyBytes(scanVol),
-            prettyBytes(m_copyVol),
-            prettyBytes(freed),
-            prettyBytes(postUsage),
-            prettyBytes(total));
+            m_preUsage,
+            min,
+            scanVol,
+            m_copyVol,
+            freed,
+            postUsage,
+            total);
       } else if (kGCVerbose >= 2) {
-        logIt(
-            "{} eligible {} {} min {} survived {} work {} total {}\n",
+        fprintf(
+            stderr,
+            "%s eligible %lu %s min %lu survived %lu work %lu total %lu\n",
             kCollectModeNames[(int)m_mode],
-            prettyBytes(m_preUsage),
+            m_preUsage,
             (m_preUsage >= min ? ">=" : "<"),
-            prettyBytes(min),
-            prettyBytes(postUsage),
-            prettyBytes(workVol),
-            prettyBytes(total));
+            min,
+            postUsage,
+            workVol,
+            total);
       }
     }
   }
@@ -1649,13 +1509,14 @@ void ObstackDetail::collect(
   if (UNLIKELY(verbose)) {
     const auto min = obstack.m_detail->m_minUsage;
     const auto total = obstack.m_detail->totalUsage(obstack);
-    logIt(
-        "{} eligible {} {} min {} total {}\n",
+    fprintf(
+        stderr,
+        "%s eligible %lu %s min %lu total %lu\n",
         kSweepModeNames[(int)mode],
-        prettyBytes(preUsage),
+        preUsage,
         (preUsage >= min ? ">=" : "<"),
-        prettyBytes(min),
-        prettyBytes(total));
+        min,
+        total);
   }
 }
 
@@ -1727,7 +1588,7 @@ struct DelayedWorkQueue {
     WorkItem(RObj& target, Type& type) : m_target(&target), m_type(&type) {}
   };
 
-  folly::small_vector<WorkItem, 8> m_queue;
+  std::vector<WorkItem> m_queue;
 
   Derived& derived() {
     return *static_cast<Derived*>(this);
@@ -2080,7 +1941,7 @@ void ObstackDetail::stealObjectsAndHandles(
     // do it while the lock is no longer held.
     Process::Ptr destOwner{&destProcess};
     {
-      std::lock_guard<folly::MicroLock> lock{h.m_ownerMutex};
+      std::lock_guard<std::mutex> lock{h.m_ownerMutex};
       destOwner.swap(h.m_owner);
     }
   });
@@ -2360,61 +2221,46 @@ void ObstackDetail::AllocStats::countSweep(CollectMode mode) {
 }
 
 void ObstackDetail::AllocStats::reportFinal() const {
-  auto PB = [](size_t n) { return prettyBytes(n); };
-  auto PC = [](size_t n) { return prettyCount(n); };
   const auto totalVol = m_smallVol + m_largeVol;
   const auto maxChunkBytes = m_maxChunkCount * kChunkSize;
   const auto collects = m_runtimeCollects + m_manualCollects + m_autoCollects;
   const auto sweeps = m_runtimeSweeps + m_manualSweeps + m_autoSweeps;
-  logIt("Obstack Peak Memory Usage Statistics\n");
-  logIt("  total:      {0}\n", PB(m_maxTotalSize));
-  logIt("  chunks:     {0} ({1})\n", PC(m_maxChunkCount), PB(maxChunkBytes));
-  logIt("  largeObj:   {0} ({1})\n", PC(m_maxLargeCount), PB(m_maxLargeSize));
-  logIt("  iobj:       {0}\n", PC(m_maxInternCount));
-  logIt("Obstack Volume\n");
-  logIt("  allocated:  {0}\n", PB(totalVol));
-  logIt("  |-large:    {0}\n", PB(m_largeVol));
-  logIt("  |-small:    {0}\n", PB(m_smallVol));
-  logIt("    |-places: {0}\n", PB(m_placeholderVol));
-  logIt("    |-frags:  {0}\n", PB(m_fragmentVol));
-  logIt("Collector Volume\n");
-  logIt("  sweeps:    {0}\n", PC(sweeps));
-  logIt("  |-runtime: {0}\n", PC(m_runtimeSweeps));
-  logIt("  |-manual:  {0}\n", PC(m_manualSweeps));
-  logIt("  |-auto:    {0}\n", PC(m_autoSweeps));
-  logIt("  collects:  {0}\n", PC(collects));
-  logIt("  |-runtime: {0}\n", PC(m_runtimeCollects));
-  logIt("  |-manual:  {0}\n", PC(m_manualCollects));
-  logIt("  |-auto:    {0}\n", PC(m_autoCollects));
-  logIt("  visited:   {0}\n", PC(m_gcVisitCount));
-  logIt("  scanned:   {0}\n", PB(m_gcScanVol));
-  logIt("  copied:    {0}\n", PB(m_gcVol));
-  logIt("  shadowed:  {0}\n", PB(m_shadowVol));
-  logIt("  reclaimed: {0}\n", PB(m_gcReclaimVol));
+  fprintf(stderr, "Obstack Peak Memory Usage Statistics\n");
+  fprintf(stderr, "  total:      %lu\n", m_maxTotalSize);
+  fprintf(stderr, "  chunks:     %lu (%lu)\n", m_maxChunkCount, maxChunkBytes);
+  fprintf(stderr, "  largeObj:   %lu (%lu)\n", m_maxLargeCount, m_maxLargeSize);
+  fprintf(stderr, "  iobj:       %lu\n", m_maxInternCount);
+  fprintf(stderr, "Obstack Volume\n");
+  fprintf(stderr, "  allocated:  %lu\n", totalVol);
+  fprintf(stderr, "  |-large:    %lu\n", m_largeVol);
+  fprintf(stderr, "  |-small:    %lu\n", m_smallVol);
+  fprintf(stderr, "    |-places: %lu\n", m_placeholderVol);
+  fprintf(stderr, "    |-frags:  %lu\n", m_fragmentVol);
+  fprintf(stderr, "Collector Volume\n");
+  fprintf(stderr, "  sweeps:    %lu\n", sweeps);
+  fprintf(stderr, "  |-runtime: %lu\n", m_runtimeSweeps);
+  fprintf(stderr, "  |-manual:  %lu\n", m_manualSweeps);
+  fprintf(stderr, "  |-auto:    %lu\n", m_autoSweeps);
+  fprintf(stderr, "  collects:  %lu\n", collects);
+  fprintf(stderr, "  |-runtime: %lu\n", m_runtimeCollects);
+  fprintf(stderr, "  |-manual:  %lu\n", m_manualCollects);
+  fprintf(stderr, "  |-auto:    %lu\n", m_autoCollects);
+  fprintf(stderr, "  visited:   %lu\n", m_gcVisitCount);
+  fprintf(stderr, "  scanned:   %lu\n", m_gcScanVol);
+  fprintf(stderr, "  copied:    %lu\n", m_gcVol);
+  fprintf(stderr, "  shadowed:  %lu\n", m_shadowVol);
+  fprintf(stderr, "  reclaimed: %lu\n", m_gcReclaimVol);
 }
 
 void ObstackDetail::AllocStats::report(const Obstack& obstack) const {
-  auto PB = [](size_t n) { return prettyBytes(n); };
+  auto PB = [](size_t n) { return n; };
   const auto usage = obstack.usage(obstack.m_detail->m_firstNote);
-  logIt(
-      "Obstack Memory Usage: {0} ({1} peak)\n", PB(usage), PB(m_maxTotalSize));
-}
-
-HhvmHandle::HhvmHandle(HhvmHeapObjectPtr ptr, bool incref) : m_heapObject(ptr) {
-  if (incref) {
-    SKIP_HHVM_incref(this);
-  }
-}
-
-HhvmHandle::~HhvmHandle() {
-  Obstack::cur().m_detail->unregisterHhvmHandle(this);
-  SKIP_HHVM_decref(this);
+  fprintf(
+      stderr, "Obstack Memory Usage: %lu (%lu peak)\n", usage, m_maxTotalSize);
 }
 
 RObjHandle::RObjHandle(RObjOrFakePtr robj, Process::Ptr owner)
-    : m_robj(robj), m_next(this), m_prev(this), m_owner(std::move(owner)) {
-  m_ownerMutex.init();
-}
+    : m_robj(robj), m_next(this), m_prev(this), m_owner(std::move(owner)) {}
 
 RObjHandle::~RObjHandle() {
   unlink();
@@ -2433,7 +2279,7 @@ RObjOrFakePtr RObjHandle::get() const {
 
 bool RObjHandle::isOwnedByCurrentProcess() {
   // With a bit of hackery we could eliminate the lock here.
-  std::lock_guard<folly::MicroLock> lock{m_ownerMutex};
+  std::lock_guard<std::mutex> lock{m_ownerMutex};
   return m_owner == Process::cur();
 }
 
@@ -2442,7 +2288,7 @@ void RObjHandle::scheduleTask(std::unique_ptr<Task> task) {
     // Fetch the current owner.
     Process::Ptr owner;
     {
-      std::lock_guard<folly::MicroLock> lock(m_ownerMutex);
+      std::lock_guard<std::mutex> lock(m_ownerMutex);
       owner = m_owner;
     }
 
@@ -2616,21 +2462,6 @@ void SKIP_Obstack_verifyStore(void* addr) {
 #else
   fatal("unimplemented");
 #endif
-}
-
-HhvmHandle* SKIP_Obstack_wrapHhvmObject(HhvmObjectPtr obj) {
-  auto& obstack = Obstack::cur();
-  return obstack.m_detail->wrapHhvmObject(obj, obstack, true);
-}
-
-HhvmHandle* SKIP_Obstack_wrapHhvmArray(HhvmArrayPtr obj) {
-  auto& obstack = Obstack::cur();
-  return obstack.m_detail->wrapHhvmArray(obj, obstack, true);
-}
-
-HhvmHandle* SKIP_Obstack_wrapHhvmHeapObject(HhvmHeapObjectPtr obj) {
-  auto& obstack = Obstack::cur();
-  return obstack.m_detail->wrapHhvmHeapObject(obj, obstack, true);
 }
 
 SkipInt SKIP_Obstack_usage(SkipObstackPos note) {

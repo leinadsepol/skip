@@ -126,7 +126,7 @@ mutable class LspServer{
       Some(LSP.Message::fromJson(json));
     } catch {
     | e ->
-      error = `Invalid request: '${e.getMessage()}' for '${messageString}'`;
+      error = `Invalid request: '${e.getMessage()}' in '${messageString}'`;
       json.expectObject().maybeGetInt("id") match {
       | None() -> this.sendErrorNotification(RPC.InvalidRequest, error)
       | Some(id) -> this.sendErrorResponse(id, RPC.InvalidRequest, error)
@@ -169,7 +169,6 @@ mutable class LspServer{
             1
           }
         };
-
         if (this.isInitialized()) {
           message match {
           // Process Lifecycle

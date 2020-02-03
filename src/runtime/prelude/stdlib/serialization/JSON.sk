@@ -674,8 +674,8 @@ base class JSONError() extends Serialization.SerializationError
 class JSONValueExpectedError(expected: .String, optMessage: ?.String = None()) extends JSONError {
   fun getMessage(): .String {
     this.optMessage match {
-      | Some(message) -> `expect${this.expected} called on a non-${this.expected} type. (${message})`
-      | _ -> `expect${this.expected} called on a non-${this.expected} type.`
+      | Some(message) -> `expect${this.expected} called on a non-${this.expected} type. (For ${message})`
+      | _ -> `expect${this.expected} called on a non-${this.expected} type. (For unknown)`
     }
   }
   fun toString(): .String {

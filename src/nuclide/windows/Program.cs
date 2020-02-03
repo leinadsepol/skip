@@ -33,7 +33,7 @@ namespace windows
             while ((line = Console.ReadLine()) != null)
             {
                 if (line.StartsWith("{")) {
-                    JsonElement elem = JsonSerializer.Deserialize<JsonElement>(line);
+                    JsonElement elem = JsonSerializer.Deserialize<JsonElement>(line.Replace('\\','/'));
                     var toWsl = Convert(elem, true);
                     // Start the process.
                     wslStreamWriter.WriteLine(toWsl);
@@ -45,6 +45,9 @@ namespace windows
 
         private static String wslpath(String path, bool toLinux)
         {
+            if (toLinux) {
+                path = path.TrimStart(new Char[] {'/'});
+            }
             Process process = new Process();
             process.StartInfo.FileName = "wsl";
             process.StartInfo.Arguments = String.Format(
@@ -73,7 +76,8 @@ namespace windows
                 // Add the text to the collected output.
                 if (line.StartsWith("{")) {
                     JsonElement elem = JsonSerializer.Deserialize<JsonElement>(line);
-                    Console.WriteLine(Convert(elem, false));
+                    var fromWsl = Convert(elem, false);
+                    Console.WriteLine(fromWsl);
                 } else {
                     Console.WriteLine(line);
                 }
@@ -120,8 +124,15 @@ namespace windows
                     break;
                 case JsonValueKind.String:
                     var str = elem.GetString();
-                    if (str.Contains("/") || str.Contains("\\")) {
-                        if (File.Exists(str)) {
+                    if (str.Contains("/") || str.Contains(@"\")) {
+                        if (str.StartsWith("file://")) {
+                            var uri = new Uri(str);
+                            var path = uri.LocalPath;
+                            str = String.Format(
+                                "file://{0}",
+                                wslpath(path, toLinux)
+                            );
+                        } else if (File.Exists(str) || Directory.Exists(str)) {
                             str = wslpath(str, toLinux);
                         }
                     }

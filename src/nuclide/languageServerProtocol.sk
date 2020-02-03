@@ -139,7 +139,7 @@ base class Trace() uses Jsonable {
     if (json.isNone()) {
       Trace::default
     } else {
-      json.fromSome().expectString(Some(`For ${path}`)) match {
+      json.fromSome().expectString(Some(path)) match {
       | "off" -> Off()
       | "messages" -> Messages()
       | "verbose" -> Verbose()
@@ -151,10 +151,10 @@ base class Trace() uses Jsonable {
 
 class WorkspaceFolder{uri: String, name: String} uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): WorkspaceFolder {
-    fields = json.expectMap(Some(`For ${path}`));
+    fields = json.expectMap(Some(path));
     WorkspaceFolder{
-      uri => fields["uri"].expectString(Some(`For ${path}.uri`)),
-      name => fields["name"].expectString(Some(`For ${path}.name`)),
+      uri => fields["uri"].expectString(Some(`${path}.uri`)),
+      name => fields["name"].expectString(Some(`${path}.name`)),
     }
   }
 }
@@ -207,7 +207,7 @@ class WorkspaceEditCapabilities{
     if (json.isNone()) {
       WorkspaceEditCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       WorkspaceEditCapabilities{
         documentChanges => object
           .maybeGetBool("documentChanges")
@@ -227,7 +227,7 @@ class DynamicRegistrationCapabilities{
     if (json.isNone()) {
       DynamicRegistrationCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       DynamicRegistrationCapabilities{
         dynamicRegistration => object
           .maybeGetBool("dynamicRegistration")
@@ -241,7 +241,7 @@ class DynamicRegistrationCapabilities{
     path: .String,
   ): DynamicRegistrationCapabilities {
     static::fromJson(
-      json.expectObject(Some(`For ${path}`)).maybeGet(fieldName),
+      json.expectObject(Some(path)).maybeGet(fieldName),
       `${path}.${fieldName}`,
     )
   }
@@ -316,7 +316,7 @@ class SymbolCapabilities{
     if (json.isNone()) {
       SymbolCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       SymbolCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
@@ -453,7 +453,7 @@ class SynchronizationCapabilities{
     if (json.isNone()) {
       SynchronizationCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       SynchronizationCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
@@ -542,7 +542,7 @@ class CompletionItemCapabilities{
     if (json.isNone()) {
       CompletionItemCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       CompletionItemCapabilities{
         snippetSupport => object.maybeGetBool("snippetSupport").default(false),
         commitCharactersSupport => object
@@ -598,7 +598,7 @@ class CompletionCapabilities{
     if (json.isNone()) {
       CompletionCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       CompletionCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
@@ -630,7 +630,7 @@ class HoverCapabilities{
     if (json.isNone()) {
       HoverCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       HoverCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
@@ -660,7 +660,7 @@ class SignatureInformationCapabilities{
     if (json.isNone()) {
       SignatureInformationCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       SignatureInformationCapabilities{
         documentationFormat => object
           .maybeGetArray("documentationFormat")
@@ -691,7 +691,7 @@ class SignatureHelpCapabilities{
     if (json.isNone()) {
       SignatureHelpCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       SignatureHelpCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
@@ -719,7 +719,7 @@ class PublishDiagnosticsCapabilities{
     if (json.isNone()) {
       PublishDiagnosticsCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       PublishDiagnosticsCapabilities{
         relatedInformation => object
           .maybeGetBool("relatedInformation")
@@ -757,7 +757,7 @@ class DocumentSymbolCapabilities{
     if (json.isNone()) {
       DocumentSymbolCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       DocumentSymbolCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
@@ -898,7 +898,7 @@ class TextDocumentClientCapabilities{
     if (json.isNone()) {
       TextDocumentClientCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       TextDocumentClientCapabilities{
         synchronization => SynchronizationCapabilities::fromJson(
           object.maybeGet("synchronization"),
@@ -1000,7 +1000,7 @@ class WindowCapabilities{
     if (json.isNone()) {
       WindowCapabilities{}
     } else {
-      object = json.fromSome().expectObject(Some(`For ${path}`));
+      object = json.fromSome().expectObject(Some(path));
       WindowCapabilities{
         status => DynamicRegistrationCapabilities::fromJsonField(
           object,
@@ -1041,7 +1041,7 @@ class ClientCapabilities{
   experimental: ?JSON.Value = None(),
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: .String): ClientCapabilities {
-    object = json.expectObject(Some(`For ${path}`));
+    object = json.expectObject(Some(path));
     ClientCapabilities{
       window => WindowCapabilities::fromJson(
         object.maybeGet("window"),
@@ -1073,7 +1073,7 @@ class InitializeParams{
     json: JSON.Value,
     path: String = "params",
   ): InitializeParams {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     InitializeParams{
       processId => fields.maybeGetInt("processId"),
       rootPath => fields.maybeGetString("rootPath"),
@@ -1093,7 +1093,7 @@ class InitializeParams{
         | jso @ JSON.Object _ ->
           Vector[WorkspaceFolder::fromJson(jso, `${path}.workspaceFolders`)]
         | _ ->
-          values.expectVector(Some(`For ${path}.workspaceFolders`)).map(jso ->
+          values.expectVector(Some(`${path}.workspaceFolders`)).map(jso ->
             WorkspaceFolder::fromJson(jso, `${path}.workspaceFolders`)
           )
         }
@@ -1633,7 +1633,7 @@ class TextDocumentItem{
   text: String,
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): TextDocumentItem {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     TextDocumentItem{
       uri => fields.getString("uri"),
       languageId => fields.getString("languageId"),
@@ -1655,7 +1655,7 @@ class DidOpenTextDocumentParams{
   ): DidOpenTextDocumentParams {
     DidOpenTextDocumentParams{
       textDocument => TextDocumentItem::fromJson(
-        json.expectObject(Some(`For ${path}`))["textDocument"],
+        json.expectObject(Some(path))["textDocument"],
         `${path}.textDocument`,
       ),
     }
@@ -1676,7 +1676,7 @@ class TextDocumentIdentifier{
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): TextDocumentIdentifier {
     TextDocumentIdentifier{
-      uri => json.expectObject(Some(`For ${path}`)).getString("uri"),
+      uri => json.expectObject(Some(path)).getString("uri"),
     }
   }
 }
@@ -1693,7 +1693,7 @@ class DidCloseTextDocumentParams{
   ): DidCloseTextDocumentParams {
     DidCloseTextDocumentParams{
       textDocument => TextDocumentIdentifier::fromJson(
-        json.expectObject(Some(`For ${path}`))["textDocument"],
+        json.expectObject(Some(path))["textDocument"],
         `${path}.textDocument`,
       ),
     }
@@ -1722,7 +1722,7 @@ class DidSaveTextDocumentParams{
     json: JSON.Value,
     path: String,
   ): DidSaveTextDocumentParams {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     DidSaveTextDocumentParams{
       textDocument => TextDocumentIdentifier::fromJson(
         fields["textDocument"],
@@ -1746,7 +1746,7 @@ class DocumentSymbolParams{
   textDocument: TextDocumentIdentifier,
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): DocumentSymbolParams {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     DocumentSymbolParams{
       textDocument => TextDocumentIdentifier::fromJson(
         fields["textDocument"],
@@ -1783,7 +1783,7 @@ class TextDocumentPositionParams{
     json: JSON.Value,
     path: String,
   ): TextDocumentPositionParams {
-    fields = json.expectMap(Some(`For ${path}`));
+    fields = json.expectMap(Some(path));
     TextDocumentPositionParams{
       textDocument => TextDocumentIdentifier::fromJson(
         fields["textDocument"],
@@ -1850,7 +1850,7 @@ class Range{
   end: Position,
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): Range {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     Range{
       start => Position::fromJson(fields["start"], `${path}.start`),
       end => Position::fromJson(fields["end"], `${path}.end`),
@@ -1875,7 +1875,7 @@ class Position{
   character: Int,
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): Position {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     Position{
       line => fields.getInt("line"),
       character => fields.getInt("character"),
@@ -1894,7 +1894,7 @@ class CancelParams{
   id: Int,
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): CancelParams {
-    CancelParams{id => json.expectObject(Some(`For ${path}`)).getInt("id")}
+    CancelParams{id => json.expectObject(Some(path)).getInt("id")}
   }
 }
 
@@ -1919,7 +1919,7 @@ class DocumentFormattingParams{
     json: JSON.Value,
     path: String,
   ): DocumentFormattingParams {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     DocumentFormattingParams{
       textDocument => TextDocumentIdentifier::fromJson(
         fields["textDocument"],
@@ -1952,7 +1952,7 @@ class FormattingOptions{
   // [key: string]: boolean | number | string;
 } uses JsonableObject {
   static fun fromJson(json: JSON.Value, path: String): FormattingOptions {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     FormattingOptions{
       tabSize => fields.getInt("tabSize"),
       insertSpaces => fields.getBool("insertSpaces"),
@@ -2009,7 +2009,7 @@ class DidChangeTextDocumentParams{
     json: JSON.Value,
     path: String,
   ): DidChangeTextDocumentParams {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     DidChangeTextDocumentParams{
       textDocument => VersionedTextDocumentIdentifier::fromJson(
         fields["textDocument"],
@@ -2046,7 +2046,7 @@ class TextDocumentContentChangeEvent{
     json: JSON.Value,
     path: String,
   ): TextDocumentContentChangeEvent {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     TextDocumentContentChangeEvent{
       range => fields.maybeGet("range").map(jso ->
         Range::fromJson(jso, `${path}.range`)
@@ -2080,7 +2080,7 @@ class VersionedTextDocumentIdentifier{
     json: JSON.Value,
     path: String,
   ): VersionedTextDocumentIdentifier {
-    fields = json.expectObject(Some(`For ${path}`));
+    fields = json.expectObject(Some(path));
     VersionedTextDocumentIdentifier{
       uri => fields.getString("uri"),
       version => fields.maybeGetInt("version"),

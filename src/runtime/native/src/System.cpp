@@ -20,12 +20,8 @@
 #include "skip/map.h"
 
 #include <chrono>
+#include <cmath>
 #include <iostream>
-
-#include <folly/Subprocess.h>
-#include <folly/init/Init.h>
-#include <folly/executors/GlobalExecutor.h>
-#include <boost/algorithm/string/predicate.hpp>
 
 using namespace skip;
 
@@ -43,33 +39,7 @@ std::vector<std::string> s_cppArguments; // argv[1..argc-1]
 // sample sets for compiler logs. TODO: make this more than just a timestamp.
 ssize_t s_skid;
 
-std::unique_ptr<folly::Subprocess> spawnProcess(const RObj* _args) {
-  const auto& args = *reinterpret_cast<const AObj<String>*>(_args);
-  auto cppStringArgs = std::vector<std::string>();
-  for (auto arg : args) {
-    cppStringArgs.push_back(arg.toCppString());
-  }
-  auto options =
-      folly::Subprocess::Options().pipeStdout().pipeStderr().usePath();
-  auto proc = std::make_unique<folly::Subprocess>(cppStringArgs, options);
-  return proc;
-}
 } // namespace
-
-SkipRObj* SKIP_Subprocess_spawnHelper(const RObj* args) {
-  auto proc = spawnProcess(args);
-  auto p = proc->communicate();
-  auto stdout = SKIP_UInt8Array_create(p.first.size());
-  memcpy(
-      reinterpret_cast<AObj<uint8_t>*>(stdout), p.first.data(), p.first.size());
-  auto stderr = SKIP_UInt8Array_create(p.second.size());
-  memcpy(
-      reinterpret_cast<AObj<uint8_t>*>(stderr),
-      p.second.data(),
-      p.second.size());
-  auto exitStatus = proc->wait().exitStatus();
-  return SKIP_unsafeCreateSubprocessOutput(exitStatus, stdout, stderr);
-}
 
 ssize_t skip::getSkid() {
   return s_skid;
@@ -100,8 +70,7 @@ void skip::initializeSkip(int argc, char** argv) {
     s_cppArguments.emplace_back(argv[i]);
   }
   // HACK: See T28176670 for some thoughts on how we might avoid this hack:
-  auto isSkipCompiler =
-      boost::algorithm::ends_with(s_cppArgument0, "skip_to_llvm");
+  auto isSkipCompiler = ends_with(s_cppArgument0, "skip_to_llvm");
   AllocProfiler::init(isSkipCompiler);
 
   (void)Arena::KindMapper::singleton();

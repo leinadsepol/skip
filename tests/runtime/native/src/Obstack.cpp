@@ -24,15 +24,15 @@
 #include "ObstackDetail.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 #include <set>
 #include <utility>
 #include <vector>
 #include <array>
-
-#include <folly/ClockGettimeWrappers.h>
 
 #if ENABLE_VALGRIND
 #include <valgrind/memcheck.h>
@@ -223,14 +223,14 @@ const auto kGCSquawk = parseEnvD("SKIP_GC_SQUAWK", kGCRatio* kGCRatio);
 // 3 = include sweeps (0-root collections)
 const auto kGCVerbose = parseEnv("SKIP_GC_VERBOSE", 0);
 
-int64_t threadNanos() {
-  return folly::chrono::clock_gettime_ns(CLOCK_THREAD_CPUTIME_ID);
+std::chrono::time_point<std::chrono::high_resolution_clock> threadNanos() {
+  return std::chrono::high_resolution_clock::now();
 }
 } // anonymous namespace
 
 const uint64_t kMemstatsLevel = parseEnv("SKIP_MEMSTATS", 0);
 
-struct LargeObjHeader final : private boost::noncopyable {
+struct LargeObjHeader final : private skip::noncopyable {
   using Pos = ObstackDetail::Pos;
 
   LargeObjHeader* m_prev; // Next older large object
@@ -270,6 +270,12 @@ struct LargeObjHeader final : private boost::noncopyable {
   }
 };
 
+const size_t numAlignBits = 14;
+
+#if !defined(__APPLE__)
+static_assert(std::log2(kChunkSize) == numAlignBits);
+#endif
+
 struct Chunk;
 struct ChunkHeader {
   explicit ChunkHeader(Chunk* prev, size_t startingGeneration)
@@ -282,7 +288,7 @@ struct ChunkHeader {
       false, // safeToLoadBefore
       false, // safeToLoadAfter
       false, // pack
-      boost::static_log2<kChunkSize>::value> // numAlignBits
+      numAlignBits> // numAlignBits
       m_prev_gen;
 };
 
@@ -514,7 +520,7 @@ size_t ObstackDetail::totalUsage(const Obstack& obstack) const {
   return usage(obstack, m_firstNote);
 }
 
-struct ObstackDetail::ChunkMap : private boost::noncopyable {
+struct ObstackDetail::ChunkMap : private skip::noncopyable {
   // Build a set of Chunks. This lets us quickly determine if a pointer is
   // allocated within the Chunks.
   std::set<const void*> m_chunks;
@@ -1059,7 +1065,8 @@ struct ObstackDetail::Collector {
   void* const m_oldNextAlloc;
 
   const size_t m_preUsage; // memory usage at collection start
-  const int64_t m_preNs; // timestamp at start
+  const std::chrono::time_point<std::chrono::high_resolution_clock>
+      m_preNs; // timestamp at start
   int64_t m_markNs;
   const CollectMode m_mode;
   size_t m_rootSize{0};
@@ -1163,7 +1170,7 @@ struct ObstackDetail::Collector {
       // shadow to the collect chunk.
       copyShadowToCollectChunk();
     }
-    m_markNs = threadNanos() - m_preNs;
+    m_markNs = (threadNanos() - m_preNs).count();
     DEBUG_ONLY const auto stats =
         m_obstack.m_detail->sweep(m_obstack, m_collectAddr, m_oldNextAlloc);
     assert(stats.largeYoungSurvivors == m_largeYoungCount);

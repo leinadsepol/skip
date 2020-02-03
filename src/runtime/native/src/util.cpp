@@ -11,9 +11,14 @@
 #include "skip/external.h"
 #include "skip/VTable.h"
 
+#include <array>
 #include <cerrno>
 #include <cstdarg>
 #include <cstdint>
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <unistd.h>
 #include <sys/uio.h>
 
 #define UNW_LOCAL_ONLY 1
@@ -51,13 +56,6 @@ void printStackTrace() {
           stderr, " -- error: unable to obtain symbol name for this frame\n");
     }
   }
-}
-
-template <class T>
-inline T loadUnaligned(const void* p) {
-  T value;
-  memcpy(&value, p, sizeof(T));
-  return value;
 }
 
 uint64_t parseEnv(const char* name, uint64_t defaultVal) {
@@ -108,7 +106,6 @@ size_t hashMemory(const void* p, size_t size, size_t seed) {
 }
 
 void fatal(const char* msg, const char* err) {
-  // TODO: Replace this with folly::writeFull or FOLLY_SAFE_CHECK or somesuch.
   std::array<struct iovec, 4> vec{{
       {const_cast<char*>(msg), strlen(msg)},
   }};

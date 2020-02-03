@@ -17,11 +17,8 @@
 #include "detail/FakePtr.h"
 #include "detail/Refs.h"
 
-#include <boost/noncopyable.hpp>
-#include <boost/iterator/iterator_facade.hpp>
-
-#include <folly/lang/Bits.h>
-#include <folly/Likely.h>
+#define LIKELY(x) (x)
+#define UNLIKELY(x) (x)
 
 #include <atomic>
 #include <vector>

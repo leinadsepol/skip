@@ -13,9 +13,6 @@
 #include "Obstack.h"
 #include "objects.h"
 
-#include <folly/lang/SafeAssert.h>
-#include <boost/intrusive_ptr.hpp>
-
 namespace skip {
 
 template <typename Derived>
@@ -33,13 +30,12 @@ struct IntrusiveFinalized : MutableIObj {
 
     const size_t numBytes = (ubs + metadataSize);
     void* const raw = Arena::alloc(numBytes, Arena::Kind::iobj);
-    FOLLY_SAFE_CHECK(raw != nullptr, "Out of memory.");
 
     // Initialize the metadata before we initialize the class
     auto metadata = mem::add(raw, metadataSize - sizeof(IObjMetadata));
     new (metadata) IObjMetadata(0, static_vtable());
 
-    auto p = boost::intrusive_ptr<Derived>{
+    auto p = skip::intrusive_ptr<Derived>{
         new (mem::add(raw, metadataSize)) Derived(std::forward<ARGS>(args)...)};
     obstack.registerIObj(p.get());
     return p.get();

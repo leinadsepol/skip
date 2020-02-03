@@ -13,9 +13,8 @@
 #include "objects.h"
 #include "Type.h"
 
+#include <array>
 #include <atomic>
-
-#include <folly/Range.h>
 
 namespace skip {
 
@@ -67,14 +66,15 @@ struct LongString final : RObj {
  * Long String format:
  *   The 64-bit value is a pointer to a LongString.  The high bit must be clear.
  */
-struct String final : StringRep, boost::less_than_comparable<String> {
+struct String final : StringRep {
   String();
   /* implicit */ String(StringRep s) {
     *static_cast<StringRep*>(this) = s;
   }
   String(const char* begin, const char* end);
-  explicit String(folly::StringPiece range)
-      : String(range.start(), range.end()) {}
+  explicit String(skip::StringPiece range)
+      : String(range.begin(), range.end()) {}
+  explicit String(std::string str) : String(str.begin(), str.end()) {}
   explicit String(const char* cstr) : String(cstr, cstr + strlen(cstr)) {}
   explicit String(const LongString& p) {
     m_longString = &p;
@@ -121,6 +121,15 @@ struct String final : StringRep, boost::less_than_comparable<String> {
   bool operator<(const String& o) const {
     return cmp(o) < 0;
   }
+  bool operator>(const String& o) const {
+    return cmp(o) > 0;
+  }
+  bool operator<=(const String& o) const {
+    return cmp(o) <= 0;
+  }
+  bool operator>=(const String& o) const {
+    return cmp(o) >= 0;
+  }
   ssize_t cmp(const String& o) const;
 
   // The size of a buffer used to hold temporary c_str() values.  Strings this
@@ -152,7 +161,7 @@ struct String final : StringRep, boost::less_than_comparable<String> {
   // not be used.
   const char* data(DataBuffer& buffer) const;
 
-  folly::StringPiece slice(DataBuffer& buffer) const;
+  skip::StringPiece slice(DataBuffer& buffer) const;
 
   void clear();
 
@@ -218,7 +227,7 @@ struct OptString final {
 };
 
 // StringPtr is a smart pointer which manages the lifetimes of its owned string.
-// We can't use boost::intrusive_ptr<String> because that would then be a
+// We can't use skip::intrusive_ptr<String> because that would then be a
 // String* - which we don't want.  The owned string MUST be interned.
 struct StringPtr final {
   ~StringPtr();

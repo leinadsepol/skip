@@ -76,10 +76,10 @@ add_library(skip_runtime.${PHASE} ${SKIP_RUNTIME_SOURCES})
 target_compile_options(skip_runtime.${PHASE} PRIVATE -Wmissing-declarations)
 target_link_libraries(skip_runtime.${PHASE} pthread gtest_main)
 target_link_libraries(skip_runtime.${PHASE} ${Boost_LIBRARIES})
-target_link_libraries(skip_runtime.${PHASE} folly)
-target_link_libraries(skip_runtime.${PHASE} icui18n icuuc icudata pcre)
+target_link_libraries(skip_runtime.${PHASE} icui18n icuuc icudata pcre dl)
 set_target_properties(skip_runtime.${PHASE} PROPERTIES OUTPUT_NAME skip_runtime)
 if(NOT APPLE)
+  target_link_libraries(skip_runtime.${PHASE} unwind)
   target_link_libraries(skip_runtime.${PHASE} rt)
 endif()
 target_link_libraries(skip_runtime.${PHASE} jemalloc)
@@ -155,23 +155,18 @@ add_dependencies(native_cc.${PHASE} skip_runtime.${PHASE} gtest_main)
 add_executable(_dummy_exe.${PHASE} EXCLUDE_FROM_ALL ${CMAKE_CURRENT_SOURCE_DIR}/src/sk_standalone.cpp ${CMAKE_SOURCE_DIR}/tests/src/runtime/native/testutil.cpp)
 target_link_libraries(_dummy_exe.${PHASE} native_cc.${PHASE})
 
-find_package(LibEvent REQUIRED)
-
 set(cc_args)
 append_target_flags(cc_args _dummy_exe.${PHASE})
 set(ld_args
   $<TARGET_LINKER_FILE:skip_runtime.${PHASE}>
   $<TARGET_LINKER_FILE:gtest_main>
-  ${FOLLY_LIBRARY}
   ${LIBGLOG_LIBRARY}
   ${GFLAGS_LIBRARY}
-  ${LIBUNWIND_LIBRARIES}
   ${DOUBLE_CONVERSION_LIBRARY}
   ${ICU4C_LIBRARIES}
   ${JEMALLOC_LIBRARY}
   ${PCRE_LIBRARY}
   ${Boost_LIBRARIES}
-  ${LIBEVENT_LIBRARY}
   ${DL_LIBRARIES}
   -lpthread
 )
@@ -255,8 +250,8 @@ add_library(
   STATIC
   src/sk_standalone.cpp
 )
-target_link_libraries(sk_standalone.${PHASE} folly skip_runtime.${PHASE})
+target_link_libraries(sk_standalone.${PHASE} skip_runtime.${PHASE})
 
 if(NOT APPLE)
-  target_link_libraries(sk_standalone.${PHASE} unwind lzma iberty)
+  target_link_libraries(sk_standalone.${PHASE} lzma iberty)
 endif()

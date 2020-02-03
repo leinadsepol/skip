@@ -23,15 +23,13 @@
 #include "skip/System.h"
 #include "skip/util.h"
 
-#include <boost/io/ios_state.hpp>
-#include <boost/noncopyable.hpp>
-#include <boost/version.hpp>
 #include <shared_mutex>
 
 #include <exception>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <cstring>
@@ -53,30 +51,17 @@
 
 namespace skip {
 
-// boost::intrusive_ptr::detach() is only from v1.56+
-// boost::reset(T*, bool) is only from v1.56+
-#if BOOST_VERSION >= 105600
 template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
-  return p.detach();
-}
-template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
-  p.reset(rhs, add_ref);
-}
-#else
-template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
+T* intrusive_ptr_detach(skip::intrusive_ptr<T>& p) {
   T* raw = p.get();
   intrusive_ptr_add_ref(raw);
   p.reset();
   return raw;
 }
 template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
-  boost::intrusive_ptr<T>(rhs, add_ref).swap(p);
+void intrusive_ptr_reset(skip::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
+  skip::intrusive_ptr<T>(rhs, add_ref).swap(p);
 }
-#endif
 
 // These are protected by cleanupsMutex(), but safe to read without the lock if
 // only a conservative value is needed (it can only increase).
@@ -285,7 +270,7 @@ struct RefreshCaller final : Caller, LeakChecker<RefreshCaller> {
 /**
  * Doubly-linked list of Invocations.
  */
-struct InvocationList final : private boost::noncopyable {
+struct InvocationList final : private skip::noncopyable {
   explicit InvocationList(bool isTopLevel = false)
       : m_sentinel(sentinelVTable()) {
     // The sentinel node points to itself. This way linking and unlinking
@@ -1448,7 +1433,7 @@ void Invocation::moveToLruHead_lck() {
  *
  * Pushing something onto this list only requires the read lock
  */
-struct CleanupList final : private boost::noncopyable {
+struct CleanupList final : private skip::noncopyable {
   CleanupList() : m_numActiveMemoTasks(0), m_head(nullptr) {}
 
   // Atomically pushes a locked Invocation onto the cleanup list.
@@ -1460,7 +1445,7 @@ struct CleanupList final : private boost::noncopyable {
   // Extracting the list requires having s_cleanupListsMutex write-locked.
   void push(Invocation::Ptr invPtr) {
     // Steal the reference from the caller.
-    auto inv = boost_detach(invPtr);
+    auto inv = intrusive_ptr_detach(invPtr);
 
     assertLocked(*inv);
     assert(!inv->inList_lck());
@@ -2218,7 +2203,7 @@ SubscriptionSet::iterator::iterator() = default;
 
 SubscriptionSet::iterator::iterator(Edge pos) : m_pos(pos) {}
 
-const UpEdge& SubscriptionSet::iterator::dereference() const {
+const UpEdge& SubscriptionSet::iterator::operator*() const {
   const Edge* e;
 
   if (auto a = m_pos.asSubArray()) {
@@ -2230,11 +2215,15 @@ const UpEdge& SubscriptionSet::iterator::dereference() const {
   return *static_cast<const UpEdge*>(e);
 }
 
-bool SubscriptionSet::iterator::equal(const iterator& other) const {
+bool SubscriptionSet::iterator::operator==(const iterator& other) const {
   return m_pos == other.m_pos;
 }
 
-void SubscriptionSet::iterator::increment() {
+bool SubscriptionSet::iterator::operator!=(const iterator& other) const {
+  return m_pos != other.m_pos;
+}
+
+SubscriptionSet::iterator& SubscriptionSet::iterator::operator++() {
   if (auto a = m_pos.asSubArray()) {
     for (EdgeIndex i = m_pos.index() + 1;; i = 0) {
       // Find the next live slot in the current array, if any.
@@ -2242,7 +2231,7 @@ void SubscriptionSet::iterator::increment() {
         if (!a->m_subs[i].isSubArray()) {
           // Found a non-freelist entry.
           m_pos = DownEdge(*a, i);
-          return;
+          return *this;
         }
       }
 
@@ -2257,6 +2246,7 @@ void SubscriptionSet::iterator::increment() {
 
   // We hit the end, make it the same thing that end() returns.
   *this = iterator();
+  return *this;
 }
 
 SubscriptionSet::iterator SubscriptionSet::begin() const {
@@ -2467,6 +2457,10 @@ bool Edge::operator==(const Edge& other) const {
   return m_pointerAndIndex.bits() == other.m_pointerAndIndex.bits();
 }
 
+bool Edge::operator!=(const Edge& other) const {
+  return m_pointerAndIndex.bits() != other.m_pointerAndIndex.bits();
+}
+
 bool Edge::operator<(const Edge& other) const {
   return m_pointerAndIndex.bits() < other.m_pointerAndIndex.bits();
 }
@@ -2512,23 +2506,23 @@ void UpEdge::assign(DownEdge d) {
 MemoValue::MemoValue(Type type) : m_type(type) {
   // Initialize all bits so that operator== can blindly compare them,
   // even for union members that don't use all the bits.
-  memset(&m_value.value, 0, sizeof(m_value.value));
+  memset(&m_value, 0, sizeof(m_value));
 }
 
 MemoValue::MemoValue(Context& ctx) : MemoValue(Type::kContext) {
-  m_value.value.m_context = &ctx;
+  m_value.m_context = &ctx;
 }
 
 MemoValue::MemoValue(InvalidationWatcher& watcher)
     : MemoValue(Type::kInvalidationWatcher) {
-  m_value.value.m_invalidationWatcher = &watcher;
+  m_value.m_invalidationWatcher = &watcher;
 }
 
 MemoValue::MemoValue(IObj* iobj, Type type, bool incref) : MemoValue(type) {
   assert(
       type == Type::kIObj || type == Type::kException ||
       type == Type::kLongString);
-  m_value.value.m_IObj = iobj;
+  m_value.m_IObj = iobj;
 
   if (iobj != nullptr && incref) {
     skip::incref(iobj);
@@ -2536,41 +2530,41 @@ MemoValue::MemoValue(IObj* iobj, Type type, bool incref) : MemoValue(type) {
 }
 
 MemoValue::MemoValue(intptr_t n, Type /*type*/) : MemoValue(Type::kFakePtr) {
-  m_value.value.m_int64 = n;
+  m_value.m_int64 = n;
 }
 
 MemoValue::MemoValue(long n) : MemoValue(Type::kInt64) {
-  m_value.value.m_int64 = n;
+  m_value.m_int64 = n;
 }
 
 MemoValue::MemoValue(long long n) : MemoValue(Type::kInt64) {
-  m_value.value.m_int64 = n;
+  m_value.m_int64 = n;
 }
 
 MemoValue::MemoValue(int n) : MemoValue(static_cast<int64_t>(n)) {}
 
 MemoValue::MemoValue(double n) : MemoValue(Type::kDouble) {
-  m_value.value.m_double = n;
+  m_value.m_double = n;
 }
 
 MemoValue::MemoValue(const StringPtr& s) {
   if (auto longString = s->asLongString()) {
-    m_value.value.m_IObj = &longString->cast<IObj>();
+    m_value.m_IObj = &longString->cast<IObj>();
     m_type = Type::kLongString;
-    incref(m_value.value.m_IObj);
+    incref(m_value.m_IObj);
   } else {
-    m_value.value.m_int64 = s->sbits();
+    m_value.m_int64 = s->sbits();
     m_type = Type::kShortString;
   }
 }
 
 MemoValue::MemoValue(StringPtr&& s) noexcept {
   if (auto longString = s->asLongString()) {
-    m_value.value.m_IObj = &longString->cast<IObj>();
+    m_value.m_IObj = &longString->cast<IObj>();
     m_type = Type::kLongString;
     s.release();
   } else {
-    m_value.value.m_int64 = s->sbits();
+    m_value.m_int64 = s->sbits();
     m_type = Type::kShortString;
   }
 }
@@ -2613,7 +2607,10 @@ void MemoValue::reset() {
 }
 
 void MemoValue::swap(MemoValue& v) noexcept {
-  std::swap(m_value, v.m_value);
+  // We cannot use std::swap here because the field is packed.
+  Value tmp = m_value;
+  m_value = v.m_value;
+  v.m_value = tmp;
   std::swap(m_type, v.m_type);
 }
 
@@ -2621,9 +2618,7 @@ bool MemoValue::operator==(const MemoValue& v) const {
   // NOTE: We intentially use bitwise equality so that e.g. 0.0 != -0.0 and
   // NaN == NaN (if same bit pattern). This is different than the C++ ==
   // operator on doubles.
-  return (
-      m_type == v.m_type &&
-      !memcmp(&m_value.value, &v.m_value.value, sizeof(m_value.value)));
+  return (m_type == v.m_type && !memcmp(&m_value, &v.m_value, sizeof(m_value)));
 }
 
 bool MemoValue::operator!=(const MemoValue& v) const {
@@ -2635,13 +2630,13 @@ bool MemoValue::isSkipValue() const {
 }
 
 Context* MemoValue::asContext() const {
-  return (m_type == Type::kContext) ? m_value.value.m_context : nullptr;
+  return (m_type == Type::kContext) ? m_value.m_context : nullptr;
 }
 
 IObj* MemoValue::asIObj() const {
   if (m_type == Type::kIObj || m_type == Type::kException ||
       m_type == Type::kLongString) {
-    return m_value.value.m_IObj;
+    return m_value.m_IObj;
   } else {
     return nullptr;
   }
@@ -2650,9 +2645,9 @@ IObj* MemoValue::asIObj() const {
 IObjOrFakePtr MemoValue::asIObjOrFakePtr() const {
   if (m_type == Type::kIObj || m_type == Type::kException ||
       m_type == Type::kLongString || m_type == Type::kNull) {
-    return {m_value.value.m_IObj};
+    return {m_value.m_IObj};
   } else if (m_type == Type::kFakePtr || m_type == Type::kShortString) {
-    return IObjOrFakePtr((intptr_t)m_value.value.m_int64);
+    return IObjOrFakePtr((intptr_t)m_value.m_int64);
   } else {
     fatal("Unhandled type for asIObjOrFakePtr()");
   }
@@ -2669,7 +2664,7 @@ IObj* MemoValue::detachIObj() {
 
 InvalidationWatcher::Ptr MemoValue::detachInvalidationWatcher() {
   assert(m_type == Type::kInvalidationWatcher);
-  InvalidationWatcher::Ptr watcher{m_value.value.m_invalidationWatcher, false};
+  InvalidationWatcher::Ptr watcher{m_value.m_invalidationWatcher, false};
   m_type = Type::kUndef;
   memset(&m_value, 0, sizeof(m_value));
   return watcher;
@@ -2677,20 +2672,20 @@ InvalidationWatcher::Ptr MemoValue::detachInvalidationWatcher() {
 
 int64_t MemoValue::asInt64() const {
   assert(m_type == Type::kInt64);
-  return m_value.value.m_int64;
+  return m_value.m_int64;
 }
 
 double MemoValue::asDouble() const {
   assert(m_type == Type::kDouble);
-  return m_value.value.m_double;
+  return m_value.m_double;
 }
 
 StringPtr MemoValue::asString() const {
   assert(isString());
   if (m_type == Type::kShortString) {
-    return StringPtr(String::fromSBits(m_value.value.m_int64));
+    return StringPtr(String::fromSBits(m_value.m_int64));
   } else {
-    return StringPtr(String(m_value.value.m_IObj->cast<const LongString>()));
+    return StringPtr(String(m_value.m_IObj->cast<const LongString>()));
   }
 }
 
@@ -3191,7 +3186,7 @@ void Revision::createTrace_lck(Revision::Ptr* inputs, size_t size) {
         inputPtr->subscribe_lck(UpEdge(*this, (EdgeIndex)index));
 
         // m_trace now owns the refcount, so drop it here.
-        auto input = boost_detach(inputPtr);
+        auto input = intrusive_ptr_detach(inputPtr);
 
         // Now that we are subscribed, get the current begin/end.
         // If the end becomes finite we will be invalidated.
@@ -3465,7 +3460,7 @@ static void registerCleanup(Invocation& inv, TxnId txn) {
     case OwningList::kLru:
       // Transfer existing refcount from LRU list to cleanup.
       s_lruList.erase(inv, false);
-      boost_reset(invPtr, &inv, false);
+      intrusive_ptr_reset(invPtr, &inv, false);
       break;
     case OwningList::kNone:
       invPtr.reset(&inv);
@@ -4137,13 +4132,11 @@ std::ostream& operator<<(std::ostream& out, const MemoValue& m) {
     case MemoValue::Type::kLongString:
     case MemoValue::Type::kShortString: {
       String::DataBuffer buf;
-      out << "[string:" << m.asString()->slice(buf) << ']';
+      out << "[string:" << m.asString()->slice(buf).begin() << ']';
       break;
     }
 
     case MemoValue::Type::kDouble: {
-      boost::io::ios_precision_saver prec{out};
-      out << std::setprecision(std::numeric_limits<double>::max_digits10);
       out << m.asDouble();
     } break;
 

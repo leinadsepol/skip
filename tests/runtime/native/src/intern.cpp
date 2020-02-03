@@ -651,7 +651,7 @@ static bool findEqualNeighbor(TarjanNode& sccList) {
 }
 
 // C++11 doesn't seem to provide a standard pair hasher.
-using HashIObjPair = boost::hash<std::pair<IObj*, IObj*>>;
+using HashIObjPair = skip::pair_hash;
 
 /**
  * Which objects we are already in the process of comparing (or have
@@ -1221,7 +1221,6 @@ void* rawShallowCloneObjectIntoIntern(
   const size_t numBytes =
       internedMetadataByteSize + std::max<size_t>(userByteSize, 8);
   void* const raw = Arena::alloc(numBytes, Arena::Kind::iobj);
-  FOLLY_SAFE_CHECK(raw != nullptr, "Out of memory.");
 
   // Copy in the VTable* and user data.
   memcpy(

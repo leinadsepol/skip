@@ -1,6 +1,32 @@
 {
   "skipVersion": "1.0",
   "programUnits": {
+    "skip_lsp": {
+      "kind": "Program",
+      "sources": [
+        "convert.sk",
+        "logger.sk",
+        "OpenFiles.sk",
+        "LspServer.sk",
+        "skipLsp.sk",
+        "Jsonable.sk",
+        "jsonRpc.sk",
+        "languageServerProtocol.sk",
+        "lspOutline.sk",
+        "RingBuffer.sk"
+      ],
+      "parameters": {
+        "backend": {
+            "native": {"sources": ["native"]},
+            "nonnative": {"sources": []}
+        }
+      },
+      "references": [
+        { "path": "../tools/printer" },
+        { "path": "../project", "name": "analyze" },
+        { "path": ".", "name": "get_definition" }
+      ]
+    },
     "skip_check": {
       "kind": "Program",
       "sources": ["skipCheck.sk"],
@@ -65,43 +91,17 @@
         "../native/types.sk",
         "../native/util.sk",
         "../native/verify.sk",
-        "../native/vtable.sk",
+        "../native/vtable.sk"
         ],
       "references": [
           { "path": "../project", "name": "analyze"  },
-          { "path": "../outer" },
+          { "path": "../outer" }
       ]
     },
     "get_definition": {
       "kind": "Library",
       "sources": ["getDefinition.sk"],
       "references": [ { "path": "../project", "name": "analyze"  } ]
-    },
-    "skip_lsp": {
-      "kind": "Program",
-      "sources": [
-        "convert.sk",
-        "logger.sk",
-        "OpenFiles.sk",
-        "LspServer.sk",
-        "skipLsp.sk",
-        "Jsonable.sk",
-        "jsonRpc.sk",
-        "languageServerProtocol.sk",
-        "lspOutline.sk",
-        "RingBuffer.sk"
-      ],
-      "parameters": {
-        "backend": {
-            "native": {"sources": ["native"]},
-            "nonnative": {"sources": []}
-        }
-      },
-      "references": [
-        { "path": "../tools/printer" },
-        { "path": "../project", "name": "analyze" },
-        { "path": ".", "name": "get_definition" }
-      ]
     },
     "skip_get_definition": {
       "kind": "Program",

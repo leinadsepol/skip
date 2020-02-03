@@ -52,37 +52,37 @@ base class Value uses Show {
     depth: Int = 0,
   ): void;
 
-  fun expectObject(): JSON.Object
+  fun expectObject(message : ?.String = None()): JSON.Object
   | x @ JSON.Object _ -> x
-  | _ -> throw JSONValueExpectedError("Object")
+  | _ -> throw JSONValueExpectedError("Object", message)
 
-  fun expectMap(): Map<.String, JSON.Value> {
-    this.expectObject().value;
+  fun expectMap(message : ?.String = None()): Map<.String, JSON.Value> {
+    this.expectObject(message).value;
   }
 
-  fun expectArray(): JSON.Array
+  fun expectArray(message : ?.String = None()): JSON.Array
   | x @ JSON.Array _ -> x
-  | _ -> throw JSONValueExpectedError("Array")
+  | _ -> throw JSONValueExpectedError("Array", message)
 
-  fun expectVector(): Vector<JSON.Value> {
-    this.expectArray().value;
+  fun expectVector(message : ?.String = None()): Vector<JSON.Value> {
+    this.expectArray(message).value;
   }
 
-  fun expectInt(): Int
+  fun expectInt(message : ?.String = None()): Int
   | JSON.IntNumber(x) -> x
-  | _ -> throw JSONValueExpectedError("Int")
+  | _ -> throw JSONValueExpectedError("Int", message)
 
-  fun expectFloat(): Float
+  fun expectFloat(message : ?.String = None()): Float
   | JSON.FloatNumber(x) -> x
-  | _ -> throw JSONValueExpectedError("Float")
+  | _ -> throw JSONValueExpectedError("Float", message)
 
-  fun expectString(): .String
+  fun expectString(message : ?.String = None()): .String
   | JSON.String(x) -> x
-  | _ -> throw JSONValueExpectedError("String")
+  | _ -> throw JSONValueExpectedError("String", message)
 
-  fun expectBool(): .Bool
+  fun expectBool(message : ?.String = None()): .Bool
   | JSON.Bool(x) -> x
-  | _ -> throw JSONValueExpectedError("Bool")
+  | _ -> throw JSONValueExpectedError("Bool", message)
 }
 
 private fun requiresEscape(ch: Char): .Bool {
@@ -671,9 +671,12 @@ private fun eatWhitespace(iter: mutable Lexer.LexingPosition): void {
 
 base class JSONError() extends Serialization.SerializationError
 
-class JSONValueExpectedError(expected: .String) extends JSONError {
+class JSONValueExpectedError(expected: .String, optMessage: ?.String = None()) extends JSONError {
   fun getMessage(): .String {
-    `expect${this.expected} called on a non-${this.expected} type.`
+    this.optMessage match {
+      | Some(message) -> `expect${this.expected} called on a non-${this.expected} type. (${message})`
+      | _ -> `expect${this.expected} called on a non-${this.expected} type.`
+    }
   }
   fun toString(): .String {
     `JSONValueExpectedError: ${this.getMessage()}`

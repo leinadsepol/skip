@@ -47,7 +47,7 @@ untracked fun readMessage(log: String -> void): String {
 
 fun messageToString(message: JSON.Value): String {
   jsonString = message.encode();
-  `Content-Length: ${jsonString.length()}${newLine}${newLine}${jsonString}`
+  `Content-Length: ${jsonString.length()}${newLine}${newLine}${jsonString}${newLine}`
 }
 
 // Write a message to stdout
@@ -67,17 +67,17 @@ base class Message{} {
       | "textDocument/documentSymbol" ->
         TextDocumentDocumentSymbolRequest{
           id,
-          params => DocumentSymbolParams::fromJson(params),
+          params => DocumentSymbolParams::fromJson(params, "params"),
         }
       | "textDocument/definition" ->
         TextDocumentGotoDefinitionRequest{
           id,
-          params => TextDocumentPositionParams::fromJson(params),
+          params => TextDocumentPositionParams::fromJson(params, "params"),
         }
       | "textDocument/formatting" ->
         DocumentFormattingRequest{
           id,
-          params => DocumentFormattingParams::fromJson(params),
+          params => DocumentFormattingParams::fromJson(params, "params"),
         }
       | _ -> invariant_violation(`Unexpected Request method: '${method}'`)
       }
@@ -85,22 +85,22 @@ base class Message{} {
       method match {
       | "exit" -> ExitNotification{}
       | "$/cancelRequest" ->
-        CancelRequest{params => CancelParams::fromJson(params)}
+        CancelRequest{params => CancelParams::fromJson(params, "params")}
       | "textDocument/didOpen" ->
         TextDocumentDidOpenNotification{
-          params => DidOpenTextDocumentParams::fromJson(params),
+          params => DidOpenTextDocumentParams::fromJson(params, "params"),
         }
       | "textDocument/didClose" ->
         TextDocumentDidCloseNotification{
-          params => DidCloseTextDocumentParams::fromJson(params),
+          params => DidCloseTextDocumentParams::fromJson(params, "params"),
         }
       | "textDocument/didSave" ->
         TextDocumentDidSaveNotification{
-          params => DidSaveTextDocumentParams::fromJson(params),
+          params => DidSaveTextDocumentParams::fromJson(params, "params"),
         }
       | "textDocument/didChange" ->
         DidChangeTextDocumentNotification{
-          params => DidChangeTextDocumentParams::fromJson(params),
+          params => DidChangeTextDocumentParams::fromJson(params, "params"),
         }
       | _ -> invariant_violation(`Unexpected notification method: '${method}'`)
       }
@@ -135,11 +135,11 @@ base class Trace() uses Jsonable {
     this.toString().toJson()
   }
 
-  static fun fromJson(json: ?JSON.Value): Trace {
+  static fun fromJson(json: ?JSON.Value, path: String): Trace {
     if (json.isNone()) {
       Trace::default
     } else {
-      json.fromSome().expectString() match {
+      json.fromSome().expectString(Some(`For ${path}`)) match {
       | "off" -> Off()
       | "messages" -> Messages()
       | "verbose" -> Verbose()
@@ -150,11 +150,11 @@ base class Trace() uses Jsonable {
 }
 
 class WorkspaceFolder{uri: String, name: String} uses JsonableObject {
-  static fun fromJson(json: JSON.Value): WorkspaceFolder {
-    fields = json.expectMap();
+  static fun fromJson(json: JSON.Value, path: String): WorkspaceFolder {
+    fields = json.expectMap(Some(`For ${path}`));
     WorkspaceFolder{
-      uri => fields["uri"].expectString(),
-      name => fields["name"].expectString(),
+      uri => fields["uri"].expectString(Some(`For ${path}.uri`)),
+      name => fields["name"].expectString(Some(`For ${path}.name`)),
     }
   }
 }
@@ -200,11 +200,14 @@ class WorkspaceEditCapabilities{
    */
   documentChanges: Bool = false,
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): WorkspaceEditCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: String,
+  ): WorkspaceEditCapabilities {
     if (json.isNone()) {
       WorkspaceEditCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       WorkspaceEditCapabilities{
         documentChanges => object
           .maybeGetBool("documentChanges")
@@ -217,11 +220,14 @@ class WorkspaceEditCapabilities{
 class DynamicRegistrationCapabilities{
   dynamicRegistration: Bool = false,
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): DynamicRegistrationCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: String,
+  ): DynamicRegistrationCapabilities {
     if (json.isNone()) {
       DynamicRegistrationCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       DynamicRegistrationCapabilities{
         dynamicRegistration => object
           .maybeGetBool("dynamicRegistration")
@@ -232,8 +238,12 @@ class DynamicRegistrationCapabilities{
   static fun fromJsonField(
     json: JSON.Value,
     fieldName: String,
+    path: .String,
   ): DynamicRegistrationCapabilities {
-    static::fromJson(json.expectObject().maybeGet(fieldName))
+    static::fromJson(
+      json.expectObject(Some(`For ${path}`)).maybeGet(fieldName),
+      `${path}.${fieldName}`,
+    )
   }
 }
 
@@ -302,14 +312,15 @@ class SymbolCapabilities{
    */
   symbolKind: Vector<SymbolKind> = Vector[],
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): SymbolCapabilities {
+  static fun fromJson(json: ?JSON.Value, path: String): SymbolCapabilities {
     if (json.isNone()) {
       SymbolCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       SymbolCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
+          path,
         ).dynamicRegistration,
         symbolKind => object
           .maybeGetArray("symbolKind")
@@ -370,7 +381,10 @@ class WorkspaceClientCapabilities{
    */
   configuration: Bool = false,
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): WorkspaceClientCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: .String,
+  ): WorkspaceClientCapabilities {
     if (json.isNone()) {
       WorkspaceClientCapabilities{}
     } else {
@@ -379,19 +393,26 @@ class WorkspaceClientCapabilities{
         applyEdit => object.maybeGetBool("applyEdit").default(false),
         workspaceEdit => WorkspaceEditCapabilities::fromJson(
           object.maybeGet("workspaceEdit"),
+          `${path}.workspaceEdit`,
         ),
         didChangeConfiguration => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "didChangeConfiguration",
+          `${path}.didChangeConfiguration`,
         ),
         didChangeWatchedFiles => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "didChangeWatchedFiles",
+          `${path}.didChangeWatchedFiles`,
         ),
-        symbol => SymbolCapabilities::fromJson(object.maybeGet("symbol")),
+        symbol => SymbolCapabilities::fromJson(
+          object.maybeGet("symbol"),
+          `${path}.symbol`,
+        ),
         executeCommand => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "executeCommand",
+          `${path}.executeCommand`,
         ),
         workspaceFolders => object
           .maybeGetBool("workspaceFolders")
@@ -425,14 +446,18 @@ class SynchronizationCapabilities{
    */
   didSave: Bool = false,
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): SynchronizationCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: .String,
+  ): SynchronizationCapabilities {
     if (json.isNone()) {
       SynchronizationCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       SynchronizationCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
+          path,
         ).dynamicRegistration,
         willSave => object.maybeGetBool("willSave").default(false),
         willSaveWaitUntil => object
@@ -510,11 +535,14 @@ class CompletionItemCapabilities{
    */
   deprecatedSupport: Bool = false,
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): CompletionItemCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: .String,
+  ): CompletionItemCapabilities {
     if (json.isNone()) {
       CompletionItemCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       CompletionItemCapabilities{
         snippetSupport => object.maybeGetBool("snippetSupport").default(false),
         commitCharactersSupport => object
@@ -563,17 +591,22 @@ class CompletionCapabilities{
    */
   contextSupport: Bool = false,
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): CompletionCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: .String,
+  ): CompletionCapabilities {
     if (json.isNone()) {
       CompletionCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       CompletionCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
+          path,
         ).dynamicRegistration,
         completionItem => CompletionItemCapabilities::fromJson(
           object.maybeGet("completionItem"),
+          `${path}.completionItem`,
         ),
         contextSupport => object.maybeGetBool("contextSupport").default(false),
       }
@@ -593,14 +626,15 @@ class HoverCapabilities{
    */
   contentFormat: Vector<MarkupKind> = Vector[],
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): HoverCapabilities {
+  static fun fromJson(json: ?JSON.Value, path: String): HoverCapabilities {
     if (json.isNone()) {
       HoverCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       HoverCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
+          path,
         ).dynamicRegistration,
         contentFormat => object
           .maybeGetArray("contentFormat")
@@ -619,11 +653,14 @@ class SignatureInformationCapabilities{
    */
   documentationFormat: Vector<MarkupKind> = Vector[],
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): SignatureInformationCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: String,
+  ): SignatureInformationCapabilities {
     if (json.isNone()) {
       SignatureInformationCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       SignatureInformationCapabilities{
         documentationFormat => object
           .maybeGetArray("documentationFormat")
@@ -647,17 +684,22 @@ class SignatureHelpCapabilities{
    */
   signatureInformation: SignatureInformationCapabilities = SignatureInformationCapabilities{},
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): SignatureHelpCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: String,
+  ): SignatureHelpCapabilities {
     if (json.isNone()) {
       SignatureHelpCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       SignatureHelpCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
+          path,
         ).dynamicRegistration,
         signatureInformation => SignatureInformationCapabilities::fromJson(
           object.maybeGet("signatureInformation"),
+          `${path}.signatureInformation`,
         ),
       }
     }
@@ -670,11 +712,14 @@ class PublishDiagnosticsCapabilities{
    */
   relatedInformation: Bool = false,
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): PublishDiagnosticsCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: String,
+  ): PublishDiagnosticsCapabilities {
     if (json.isNone()) {
       PublishDiagnosticsCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       PublishDiagnosticsCapabilities{
         relatedInformation => object
           .maybeGetBool("relatedInformation")
@@ -705,14 +750,18 @@ class DocumentSymbolCapabilities{
    */
   symbolKind: Vector<SymbolKind> = Vector[],
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): DocumentSymbolCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: String,
+  ): DocumentSymbolCapabilities {
     if (json.isNone()) {
       DocumentSymbolCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       DocumentSymbolCapabilities{
         dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
           json,
+          path,
         ).dynamicRegistration,
         symbolKind => object
           .maybeGetArray("symbolKind")
@@ -842,76 +891,99 @@ class TextDocumentClientCapabilities{
    */
   publishDiagnostics: PublishDiagnosticsCapabilities = PublishDiagnosticsCapabilities{},
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): TextDocumentClientCapabilities {
+  static fun fromJson(
+    json: ?JSON.Value,
+    path: .String,
+  ): TextDocumentClientCapabilities {
     if (json.isNone()) {
       TextDocumentClientCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       TextDocumentClientCapabilities{
         synchronization => SynchronizationCapabilities::fromJson(
           object.maybeGet("synchronization"),
+          `${path}.synchronization`,
         ),
         completion => CompletionCapabilities::fromJson(
           object.maybeGet("completion"),
+          `${path}.completion`,
         ),
-        hover => HoverCapabilities::fromJson(object.maybeGet("hover")),
+        hover => HoverCapabilities::fromJson(
+          object.maybeGet("hover"),
+          `${path}.hover`,
+        ),
         signatureHelp => SignatureHelpCapabilities::fromJson(
           object.maybeGet("signatureHelp"),
+          `${path}.signatureHelp`,
         ),
         references => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "references",
+          `${path}.references`,
         ),
         documentHighlight => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "documentHighlight",
+          `${path}.documentHighlight`,
         ),
         formatting => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "formatting",
+          `${path}.formatting`,
         ),
         rangeFormatting => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "rangeFormatting",
+          `${path}.rangeFormatting`,
         ),
         onTypeFormatting => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "onTypeFormatting",
+          `${path}.onTypeFormatting`,
         ),
         definition => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "definition",
+          `${path}.definition`,
         ),
         typeDefinition => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "typeDefinition",
+          `${path}.typeDefinition`,
         ),
         implementation => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "implementation",
+          `${path}.implementation`,
         ),
         codeAction => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "codeAction",
+          `${path}.codeAction`,
         ),
         codeLens => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "codeLens",
+          `${path}.codeLens`,
         ),
         documentLink => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "documentLink",
+          `${path}.documentLink`,
         ),
         colorProvider => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "colorProvider",
+          `${path}.colorProvider`,
         ),
         rename => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "rename",
+          `${path}.rename`,
         ),
         publishDiagnostics => PublishDiagnosticsCapabilities::fromJson(
           object.maybeGet("publishDiagnostics"),
+          `${path}.publishDiagnostics`,
         ),
       }
     }
@@ -924,23 +996,26 @@ class WindowCapabilities{
   progress: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
   actionRequired: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
 } uses JsonableObject {
-  static fun fromJson(json: ?JSON.Value): WindowCapabilities {
+  static fun fromJson(json: ?JSON.Value, path: String): WindowCapabilities {
     if (json.isNone()) {
       WindowCapabilities{}
     } else {
-      object = json.fromSome().expectObject();
+      object = json.fromSome().expectObject(Some(`For ${path}`));
       WindowCapabilities{
         status => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "status",
+          `${path}.status`,
         ),
         progress => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "progress",
+          `${path}.progress`,
         ),
         actionRequired => DynamicRegistrationCapabilities::fromJsonField(
           object,
           "actionRequired",
+          `${path}.actionRequired`,
         ),
       }
     }
@@ -965,15 +1040,20 @@ class ClientCapabilities{
    */
   experimental: ?JSON.Value = None(),
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): ClientCapabilities {
-    object = json.expectObject();
+  static fun fromJson(json: JSON.Value, path: .String): ClientCapabilities {
+    object = json.expectObject(Some(`For ${path}`));
     ClientCapabilities{
-      window => WindowCapabilities::fromJson(object.maybeGet("window")),
+      window => WindowCapabilities::fromJson(
+        object.maybeGet("window"),
+        `${path}.window`,
+      ),
       workspace => WorkspaceClientCapabilities::fromJson(
         object.maybeGet("workspace"),
+        `${path}.workspace`,
       ),
       textDocument => TextDocumentClientCapabilities::fromJson(
         object.maybeGet("textDocument"),
+        `${path}.textDocument`,
       ),
       experimental => object.maybeGet("experimental"),
     }
@@ -989,20 +1069,34 @@ class InitializeParams{
   trace: Trace,
   workspaceFolders: Vector<WorkspaceFolder>,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): InitializeParams {
-    fields = json.expectObject();
+  static fun fromJson(
+    json: JSON.Value,
+    path: String = "params",
+  ): InitializeParams {
+    fields = json.expectObject(Some(`For ${path}`));
     InitializeParams{
       processId => fields.maybeGetInt("processId"),
       rootPath => fields.maybeGetString("rootPath"),
       rootUri => fields.getString("rootUri"),
       initializationOptions => fields.maybeGet("initializationOptions"),
-      capabilities => ClientCapabilities::fromJson(fields["capabilities"]),
-      trace => Trace::fromJson(fields.maybeGet("trace")),
+      capabilities => ClientCapabilities::fromJson(
+        fields["capabilities"],
+        `${path}.capabilities`,
+      ),
+      trace => Trace::fromJson(fields.maybeGet("trace"), `${path}.trace`),
       workspaceFolders => fields.maybeGet("workspaceFolders") match {
       | None()
       | Some(JSON.Null()) ->
         Vector[]
-      | Some(values) -> values.expectVector().map(WorkspaceFolder::fromJson)
+      | Some(values) ->
+        values match {
+        | jso @ JSON.Object _ ->
+          Vector[WorkspaceFolder::fromJson(jso, `${path}.workspaceFolders`)]
+        | _ ->
+          values.expectVector(Some(`For ${path}.workspaceFolders`)).map(jso ->
+            WorkspaceFolder::fromJson(jso, `${path}.workspaceFolders`)
+          )
+        }
       },
     }
   }
@@ -1538,8 +1632,8 @@ class TextDocumentItem{
    */
   text: String,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): TextDocumentItem {
-    fields = json.expectObject();
+  static fun fromJson(json: JSON.Value, path: String): TextDocumentItem {
+    fields = json.expectObject(Some(`For ${path}`));
     TextDocumentItem{
       uri => fields.getString("uri"),
       languageId => fields.getString("languageId"),
@@ -1555,10 +1649,14 @@ class DidOpenTextDocumentParams{
    */
   textDocument: TextDocumentItem,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): DidOpenTextDocumentParams {
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): DidOpenTextDocumentParams {
     DidOpenTextDocumentParams{
       textDocument => TextDocumentItem::fromJson(
-        json.expectObject()["textDocument"],
+        json.expectObject(Some(`For ${path}`))["textDocument"],
+        `${path}.textDocument`,
       ),
     }
   }
@@ -1576,8 +1674,10 @@ class TextDocumentIdentifier{
    */
   uri: DocumentUri,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): TextDocumentIdentifier {
-    TextDocumentIdentifier{uri => json.expectObject().getString("uri")}
+  static fun fromJson(json: JSON.Value, path: String): TextDocumentIdentifier {
+    TextDocumentIdentifier{
+      uri => json.expectObject(Some(`For ${path}`)).getString("uri"),
+    }
   }
 }
 
@@ -1587,10 +1687,14 @@ class DidCloseTextDocumentParams{
    */
   textDocument: TextDocumentIdentifier,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): DidCloseTextDocumentParams {
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): DidCloseTextDocumentParams {
     DidCloseTextDocumentParams{
       textDocument => TextDocumentIdentifier::fromJson(
-        json.expectObject()["textDocument"],
+        json.expectObject(Some(`For ${path}`))["textDocument"],
+        `${path}.textDocument`,
       ),
     }
   }
@@ -1614,10 +1718,16 @@ class DidSaveTextDocumentParams{
    */
   text: ?String,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): DidSaveTextDocumentParams {
-    fields = json.expectObject();
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): DidSaveTextDocumentParams {
+    fields = json.expectObject(Some(`For ${path}`));
     DidSaveTextDocumentParams{
-      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
+      textDocument => TextDocumentIdentifier::fromJson(
+        fields["textDocument"],
+        `${path}.textDocument`,
+      ),
       text => fields.maybeGetString("text"),
     }
   }
@@ -1635,10 +1745,13 @@ class DocumentSymbolParams{
    */
   textDocument: TextDocumentIdentifier,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): DocumentSymbolParams {
-    fields = json.expectObject();
+  static fun fromJson(json: JSON.Value, path: String): DocumentSymbolParams {
+    fields = json.expectObject(Some(`For ${path}`));
     DocumentSymbolParams{
-      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
+      textDocument => TextDocumentIdentifier::fromJson(
+        fields["textDocument"],
+        `${path}.textDocument`,
+      ),
     }
   }
 }
@@ -1666,11 +1779,17 @@ class TextDocumentPositionParams{
    */
   position: Position,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): TextDocumentPositionParams {
-    fields = json.expectMap();
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): TextDocumentPositionParams {
+    fields = json.expectMap(Some(`For ${path}`));
     TextDocumentPositionParams{
-      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
-      position => Position::fromJson(fields["position"]),
+      textDocument => TextDocumentIdentifier::fromJson(
+        fields["textDocument"],
+        `${path}.textDocument`,
+      ),
+      position => Position::fromJson(fields["position"], `${path}.position`),
     }
   }
 }
@@ -1730,11 +1849,11 @@ class Range{
    */
   end: Position,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): Range {
-    fields = json.expectObject();
+  static fun fromJson(json: JSON.Value, path: String): Range {
+    fields = json.expectObject(Some(`For ${path}`));
     Range{
-      start => Position::fromJson(fields["start"]),
-      end => Position::fromJson(fields["end"]),
+      start => Position::fromJson(fields["start"], `${path}.start`),
+      end => Position::fromJson(fields["end"], `${path}.end`),
     }
   }
 }
@@ -1755,8 +1874,8 @@ class Position{
    */
   character: Int,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): Position {
-    fields = json.expectObject();
+  static fun fromJson(json: JSON.Value, path: String): Position {
+    fields = json.expectObject(Some(`For ${path}`));
     Position{
       line => fields.getInt("line"),
       character => fields.getInt("character"),
@@ -1774,8 +1893,8 @@ class CancelParams{
    */
   id: Int,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): CancelParams {
-    CancelParams{id => json.expectObject().getInt("id")}
+  static fun fromJson(json: JSON.Value, path: String): CancelParams {
+    CancelParams{id => json.expectObject(Some(`For ${path}`)).getInt("id")}
   }
 }
 
@@ -1796,11 +1915,20 @@ class DocumentFormattingParams{
    */
   options: FormattingOptions,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): DocumentFormattingParams {
-    fields = json.expectObject();
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): DocumentFormattingParams {
+    fields = json.expectObject(Some(`For ${path}`));
     DocumentFormattingParams{
-      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
-      options => FormattingOptions::fromJson(fields["options"]),
+      textDocument => TextDocumentIdentifier::fromJson(
+        fields["textDocument"],
+        `${path}.textDocument`,
+      ),
+      options => FormattingOptions::fromJson(
+        fields["options"],
+        `${path}.options`,
+      ),
     }
   }
 }
@@ -1823,8 +1951,8 @@ class FormattingOptions{
    */
   // [key: string]: boolean | number | string;
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): FormattingOptions {
-    fields = json.expectObject();
+  static fun fromJson(json: JSON.Value, path: String): FormattingOptions {
+    fields = json.expectObject(Some(`For ${path}`));
     FormattingOptions{
       tabSize => fields.getInt("tabSize"),
       insertSpaces => fields.getBool("insertSpaces"),
@@ -1837,10 +1965,13 @@ class DocumentFormattingRequest{
   method: String = "textDocument/formatting",
   params: DocumentFormattingParams,
 } extends Request {
-  static fun fromRpc(request: RPC.Request): DocumentFormattingRequest {
+  static fun fromRpc(
+    request: RPC.Request,
+    path: String,
+  ): DocumentFormattingRequest {
     DocumentFormattingRequest{
       id => request.id,
-      params => DocumentFormattingParams::fromJson(request.params),
+      params => DocumentFormattingParams::fromJson(request.params, path),
     }
   }
 }
@@ -1874,15 +2005,19 @@ class DidChangeTextDocumentParams{
    */
   contentChanges: Vector<TextDocumentContentChangeEvent>,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): DidChangeTextDocumentParams {
-    fields = json.expectObject();
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): DidChangeTextDocumentParams {
+    fields = json.expectObject(Some(`For ${path}`));
     DidChangeTextDocumentParams{
       textDocument => VersionedTextDocumentIdentifier::fromJson(
         fields["textDocument"],
+        `${path}.textDocument`,
       ),
-      contentChanges => fields
-        .getArray("contentChanges")
-        .value.map(TextDocumentContentChangeEvent::fromJson),
+      contentChanges => fields.getArray("contentChanges").value.map(jso ->
+        TextDocumentContentChangeEvent::fromJson(jso, `${path}.contentChanges`)
+      ),
     }
   }
 }
@@ -1907,10 +2042,15 @@ class TextDocumentContentChangeEvent{
    */
   text: String,
 } uses JsonableObject {
-  static fun fromJson(json: JSON.Value): TextDocumentContentChangeEvent {
-    fields = json.expectObject();
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): TextDocumentContentChangeEvent {
+    fields = json.expectObject(Some(`For ${path}`));
     TextDocumentContentChangeEvent{
-      range => fields.maybeGet("range").map(Range::fromJson),
+      range => fields.maybeGet("range").map(jso ->
+        Range::fromJson(jso, `${path}.range`)
+      ),
       rangeLength => fields.maybeGetInt("rangeLength"),
       text => fields.getString("text"),
     }
@@ -1936,8 +2076,11 @@ class VersionedTextDocumentIdentifier{
    */
   version: ?Int,
 } uses Hashable, Equality, JsonableObject {
-  static fun fromJson(json: JSON.Value): VersionedTextDocumentIdentifier {
-    fields = json.expectObject();
+  static fun fromJson(
+    json: JSON.Value,
+    path: String,
+  ): VersionedTextDocumentIdentifier {
+    fields = json.expectObject(Some(`For ${path}`));
     VersionedTextDocumentIdentifier{
       uri => fields.getString("uri"),
       version => fields.maybeGetInt("version"),
@@ -1950,9 +2093,12 @@ class DidChangeTextDocumentNotification{
   method: String = "textDocument/didChange",
   params: DidChangeTextDocumentParams,
 } extends Notification {
-  static fun fromRpc(request: RPC.Request): DidChangeTextDocumentNotification {
+  static fun fromRpc(
+    request: RPC.Request,
+    path: String,
+  ): DidChangeTextDocumentNotification {
     DidChangeTextDocumentNotification{
-      params => DidChangeTextDocumentParams::fromJson(request.params),
+      params => DidChangeTextDocumentParams::fromJson(request.params, path),
     }
   }
 }

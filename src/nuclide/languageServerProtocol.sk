@@ -35,13 +35,11 @@ untracked fun readMessage(log: String -> void): String {
   };
 
   // Skip the extra \r\n
-  extraLine = read_line();
-  invariant(extraLine == "\r");
-  length = line
-    .getIter()
-    .forward(contentLength)
-    .slice(line.getEndIter().rewind(1))
-    .toInt();
+  extraLine = read_line().trimRight();
+  invariant(extraLine == "");
+  strLength = line.getIter().forward(contentLength).slice(line.getEndIter());
+  length = strLength.trimRight().toInt();
+  invariant(line.trimRight() == `${header}${length}`);
   read_stdin_bytes(length)
 }
 
@@ -210,7 +208,7 @@ class WorkspaceEditCapabilities{
       object = json.fromSome().expectObject(Some(path));
       WorkspaceEditCapabilities{
         documentChanges => object
-          .maybeGetBool("documentChanges")
+          .maybeGetBool("documentChanges", Some(`${path}.documentChanges`))
           .default(false),
       }
     }
@@ -230,7 +228,10 @@ class DynamicRegistrationCapabilities{
       object = json.fromSome().expectObject(Some(path));
       DynamicRegistrationCapabilities{
         dynamicRegistration => object
-          .maybeGetBool("dynamicRegistration")
+          .maybeGetBool(
+            "dynamicRegistration",
+            Some(`${path}.dynamicRegistration`),
+          )
           .default(false),
       }
     }
@@ -291,12 +292,7 @@ class SymbolKind(value: Int) uses Jsonable {
   }
 }
 
-class SymbolCapabilities{
-  /**
-   * Symbol request supports dynamic registration.
-   */
-  dynamicRegistration: Bool = false,
-
+class SymbolValueSet{
   /**
    * Specific capabilities for the `SymbolKind` in the `workspace/symbol` request.
    */
@@ -310,7 +306,30 @@ class SymbolCapabilities{
    * the symbol kinds from `File` to `Array` as defined in
    * the initial version of the protocol.
    */
-  symbolKind: Vector<SymbolKind> = Vector[],
+  valueSet: Vector<SymbolKind> = Vector[],
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value, path: String): SymbolValueSet {
+    if (json.isNone()) {
+      SymbolValueSet{}
+    } else {
+      object = json.fromSome().expectObject(Some(path));
+      SymbolValueSet{
+        valueSet => object
+          .maybeGetArray("valueSet", Some(`${path}.valueSet`))
+          .map(array -> array.value)
+          .default(Vector[])
+          .map(SymbolKind::fromJson),
+      }
+    }
+  }
+}
+
+class SymbolCapabilities{
+  /**
+   * Symbol request supports dynamic registration.
+   */
+  dynamicRegistration: Bool = false,
+  symbolKind: SymbolValueSet = SymbolValueSet{},
 } uses JsonableObject {
   static fun fromJson(json: ?JSON.Value, path: String): SymbolCapabilities {
     if (json.isNone()) {
@@ -322,11 +341,10 @@ class SymbolCapabilities{
           json,
           path,
         ).dynamicRegistration,
-        symbolKind => object
-          .maybeGetArray("symbolKind")
-          .map(array -> array.value)
-          .default(Vector[])
-          .map(SymbolKind::fromJson),
+        symbolKind => SymbolValueSet::fromJson(
+          object.maybeGet("symbolKind"),
+          `${path}.symbolKind`,
+        ),
       }
     }
   }
@@ -390,7 +408,9 @@ class WorkspaceClientCapabilities{
     } else {
       object = json.fromSome().expectObject();
       WorkspaceClientCapabilities{
-        applyEdit => object.maybeGetBool("applyEdit").default(false),
+        applyEdit => object
+          .maybeGetBool("applyEdit", Some(`${path}.applyEdit`))
+          .default(false),
         workspaceEdit => WorkspaceEditCapabilities::fromJson(
           object.maybeGet("workspaceEdit"),
           `${path}.workspaceEdit`,
@@ -415,9 +435,11 @@ class WorkspaceClientCapabilities{
           `${path}.executeCommand`,
         ),
         workspaceFolders => object
-          .maybeGetBool("workspaceFolders")
+          .maybeGetBool("workspaceFolders", Some(`${path}.workspaceFolders`))
           .default(false),
-        configuration => object.maybeGetBool("configuration").default(false),
+        configuration => object
+          .maybeGetBool("configuration", Some(`${path}.configuration`))
+          .default(false),
       }
     }
   }
@@ -459,11 +481,15 @@ class SynchronizationCapabilities{
           json,
           path,
         ).dynamicRegistration,
-        willSave => object.maybeGetBool("willSave").default(false),
-        willSaveWaitUntil => object
-          .maybeGetBool("willSaveWaitUntil")
+        willSave => object
+          .maybeGetBool("willSave", Some(`${path}.willSave`))
           .default(false),
-        didSave => object.maybeGetBool("didSave").default(false),
+        willSaveWaitUntil => object
+          .maybeGetBool("willSaveWaitUntil", Some(`${path}.willSaveWaitUntil`))
+          .default(false),
+        didSave => object
+          .maybeGetBool("didSave", Some(`${path}.didSave`))
+          .default(false),
       }
     }
   }
@@ -544,17 +570,25 @@ class CompletionItemCapabilities{
     } else {
       object = json.fromSome().expectObject(Some(path));
       CompletionItemCapabilities{
-        snippetSupport => object.maybeGetBool("snippetSupport").default(false),
+        snippetSupport => object
+          .maybeGetBool("snippetSupport", Some(`${path}.snippetSupport`))
+          .default(false),
         commitCharactersSupport => object
-          .maybeGetBool("commitCharactersSupport")
+          .maybeGetBool(
+            "commitCharactersSupport",
+            Some(`${path}.commitCharactersSupport`),
+          )
           .default(false),
         documentationFormat => object
-          .maybeGetArray("documentationFormat")
+          .maybeGetArray(
+            "documentationFormat",
+            Some(`${path}.documentationFormat`),
+          )
           .map(array -> array.value)
           .default(Vector[])
           .map(MarkupKind::fromJson),
         deprecatedSupport => object
-          .maybeGetBool("deprecatedSupport")
+          .maybeGetBool("deprecatedSupport", Some(`${path}.deprecatedSupport`))
           .default(false),
       }
     }
@@ -608,7 +642,9 @@ class CompletionCapabilities{
           object.maybeGet("completionItem"),
           `${path}.completionItem`,
         ),
-        contextSupport => object.maybeGetBool("contextSupport").default(false),
+        contextSupport => object
+          .maybeGetBool("contextSupport", Some(`${path}.contextSupport`))
+          .default(false),
       }
     }
   }
@@ -637,7 +673,7 @@ class HoverCapabilities{
           path,
         ).dynamicRegistration,
         contentFormat => object
-          .maybeGetArray("contentFormat")
+          .maybeGetArray("contentFormat", Some(`${path}.contentFormat`))
           .map(array -> array.value)
           .default(Vector[])
           .map(MarkupKind::fromJson),
@@ -663,7 +699,10 @@ class SignatureInformationCapabilities{
       object = json.fromSome().expectObject(Some(path));
       SignatureInformationCapabilities{
         documentationFormat => object
-          .maybeGetArray("documentationFormat")
+          .maybeGetArray(
+            "documentationFormat",
+            Some(`${path}.documentationFormat`),
+          )
           .map(array -> array.value)
           .default(Vector[])
           .map(MarkupKind::fromJson),
@@ -722,7 +761,10 @@ class PublishDiagnosticsCapabilities{
       object = json.fromSome().expectObject(Some(path));
       PublishDiagnosticsCapabilities{
         relatedInformation => object
-          .maybeGetBool("relatedInformation")
+          .maybeGetBool(
+            "relatedInformation",
+            Some(`${path}.relatedInformation`),
+          )
           .default(false),
       }
     }
@@ -734,21 +776,7 @@ class DocumentSymbolCapabilities{
    * Whether document symbol supports dynamic registration.
    */
   dynamicRegistration: Bool = false,
-
-  /**
-   * Specific capabilities for the `SymbolKind`.
-   */
-  /**
-   * The symbol kind values the client supports. When this
-   * property exists the client also guarantees that it will
-   * handle values outside its set gracefully and falls back
-   * to a default value when unknown.
-   *
-   * If this property is not present the client only supports
-   * the symbol kinds from `File` to `Array` as defined in
-   * the initial version of the protocol.
-   */
-  symbolKind: Vector<SymbolKind> = Vector[],
+  symbolKind: SymbolValueSet = SymbolValueSet{},
 } uses JsonableObject {
   static fun fromJson(
     json: ?JSON.Value,
@@ -763,11 +791,10 @@ class DocumentSymbolCapabilities{
           json,
           path,
         ).dynamicRegistration,
-        symbolKind => object
-          .maybeGetArray("symbolKind")
-          .map(array -> array.value)
-          .default(Vector[])
-          .map(SymbolKind::fromJson),
+        symbolKind => SymbolValueSet::fromJson(
+          object.maybeGet("symbolKind"),
+          `${path}.symbolKind`,
+        ),
       }
     }
   }
@@ -1075,8 +1102,8 @@ class InitializeParams{
   ): InitializeParams {
     fields = json.expectObject(Some(path));
     InitializeParams{
-      processId => fields.maybeGetInt("processId"),
-      rootPath => fields.maybeGetString("rootPath"),
+      processId => fields.maybeGetInt("processId", Some(`${path}.processId`)),
+      rootPath => fields.maybeGetString("rootPath", Some(`${path}.rootPath`)),
       rootUri => fields.getString("rootUri"),
       initializationOptions => fields.maybeGet("initializationOptions"),
       capabilities => ClientCapabilities::fromJson(
@@ -1728,7 +1755,7 @@ class DidSaveTextDocumentParams{
         fields["textDocument"],
         `${path}.textDocument`,
       ),
-      text => fields.maybeGetString("text"),
+      text => fields.maybeGetString("text", Some(`${path}.text`)),
     }
   }
 }
@@ -2051,7 +2078,10 @@ class TextDocumentContentChangeEvent{
       range => fields.maybeGet("range").map(jso ->
         Range::fromJson(jso, `${path}.range`)
       ),
-      rangeLength => fields.maybeGetInt("rangeLength"),
+      rangeLength => fields.maybeGetInt(
+        "rangeLength",
+        Some(`${path}.rangeLength`),
+      ),
       text => fields.getString("text"),
     }
   }
@@ -2083,7 +2113,7 @@ class VersionedTextDocumentIdentifier{
     fields = json.expectObject(Some(path));
     VersionedTextDocumentIdentifier{
       uri => fields.getString("uri"),
-      version => fields.maybeGetInt("version"),
+      version => fields.maybeGetInt("version", Some(`${path}.version`)),
     }
   }
 }

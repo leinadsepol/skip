@@ -217,52 +217,52 @@ class Object(value: Map<.String, JSON.Value>) extends JSON.Value {
     this.value.maybeGet(key);
   }
 
-  fun getObject(key: .String): JSON.Object {
-    this.get(key).expectObject();
+  fun getObject(key: .String, optPath : ?.String = None()): JSON.Object {
+    this.get(key).expectObject(optPath);
   }
 
-  fun getArray(key: .String): JSON.Array {
-    this.get(key).expectArray();
+  fun getArray(key: .String, optPath : ?.String = None()): JSON.Array {
+    this.get(key).expectArray(optPath);
   }
 
-  fun getString(key: .String): .String {
-    this.get(key).expectString();
+  fun getString(key: .String, optPath : ?.String = None()): .String {
+    this.get(key).expectString(optPath);
   }
 
-  fun getInt(key: .String): .Int {
-    this.get(key).expectInt();
+  fun getInt(key: .String, optPath : ?.String = None()): .Int {
+    this.get(key).expectInt(optPath);
   }
 
-  fun getFloat(key: .String): .Float {
-    this.get(key).expectFloat();
+  fun getFloat(key: .String, optPath : ?.String = None()): .Float {
+    this.get(key).expectFloat(optPath);
   }
 
-  fun getBool(key: .String): .Bool {
-    this.get(key).expectBool();
+  fun getBool(key: .String, optPath : ?.String = None()): .Bool {
+    this.get(key).expectBool(optPath);
   }
 
-  fun maybeGetObject(key: .String): ?JSON.Object {
-    this.maybeGet(key).map(value -> value.expectObject());
+  fun maybeGetObject(key: .String, optPath : ?.String = None()): ?JSON.Object {
+    this.maybeGet(key).map(value -> value.expectObject(optPath));
   }
 
-  fun maybeGetArray(key: .String): ?JSON.Array {
-    this.maybeGet(key).map(value -> value.expectArray());
+  fun maybeGetArray(key: .String, optPath : ?.String = None()): ?JSON.Array {
+    this.maybeGet(key).map(value -> value.expectArray(optPath));
   }
 
-  fun maybeGetString(key: .String): ?.String {
-    this.maybeGet(key).map(value -> value.expectString());
+  fun maybeGetString(key: .String, optPath : ?.String = None()): ?.String {
+    this.maybeGet(key).map(value -> value.expectString(optPath));
   }
 
-  fun maybeGetInt(key: .String): ?.Int {
-    this.maybeGet(key).map(value -> value.expectInt());
+  fun maybeGetInt(key: .String, optPath : ?.String = None()): ?.Int {
+    this.maybeGet(key).map(value -> value.expectInt(optPath));
   }
 
-  fun maybeGetFloat(key: .String): ?.Float {
-    this.maybeGet(key).map(value -> value.expectFloat());
+  fun maybeGetFloat(key: .String, optPath : ?.String = None()): ?.Float {
+    this.maybeGet(key).map(value -> value.expectFloat(optPath));
   }
 
-  fun maybeGetBool(key: .String): ?.Bool {
-    this.maybeGet(key).map(value -> value.expectBool());
+  fun maybeGetBool(key: .String, optPath : ?.String = None()): ?.Bool {
+    this.maybeGet(key).map(value -> value.expectBool(optPath));
   }
 
   fun writeToStream(

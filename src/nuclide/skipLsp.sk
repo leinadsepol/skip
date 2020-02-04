@@ -23,15 +23,11 @@ untracked fun main(): void {
     ],
     "Usage: skip_lsp [--no-type-errors] [--test-mode]",
   );
-  logger = MessageLogger::create(
-      "/mnt/d/tmp/skip_lsp/logger.txt"
-  );
   server = mutable LspServer{
     includeTypeErrors => args.includeTypeErrors,
     reportDoneProcessing => args.testMode,
     enableConsole => !args.testMode,
-    enableLogging => !args.testMode,
-    logger => Some(logger)
+    enableLogging => !args.testMode
   };
   exit(server.run());
 }

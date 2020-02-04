@@ -15,3 +15,5 @@ npm-debug.log
 
 .mypy_cache
 /src/nuclide/windows/obj
+/src/nuclide/windows
+/src/nuclide/.vscode

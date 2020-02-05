@@ -29,23 +29,26 @@ untracked fun readMessage(log: String -> void): String {
   line = loop {
     read = read_line();
     log(read);
-    if (read.startsWith(header)) {
+    if (read.startsWith(header) || read.startsWith("{")) {
       break read
     }
   };
-
   // Skip the extra \r\n
-  extraLine = read_line().trimRight();
-  invariant(extraLine == "");
-  strLength = line.getIter().forward(contentLength).slice(line.getEndIter());
-  length = strLength.trimRight().toInt();
-  invariant(line.trimRight() == `${header}${length}`);
-  read_stdin_bytes(length)
+  if (line.startsWith("{")) {
+    line
+  } else {
+    extraLine = read_line().trimRight();
+    invariant(extraLine == "");
+    strLength = line.getIter().forward(contentLength).slice(line.getEndIter());
+    length = strLength.trimRight().toInt();
+    invariant(line.trimRight() == `${header}${length}`);
+    read_stdin_bytes(length);
+  }
 }
 
 fun messageToString(message: JSON.Value): String {
   jsonString = message.encode();
-  `Content-Length: ${jsonString.length()}${newLine}${newLine}${jsonString}${newLine}`
+  `Content-Length: ${jsonString.length()}${newLine}${newLine}${jsonString}`
 }
 
 // Write a message to stdout

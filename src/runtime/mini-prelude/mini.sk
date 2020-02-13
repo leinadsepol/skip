@@ -40,37 +40,203 @@ fun print_string(value: String): void {
   print_raw(value);
   print_raw("\n")
 }
+@debug
+@no_throw
+@cpp_runtime
 native fun print_raw(String): void;
+@debug
+@no_throw
+@cpp_runtime
 native fun print_error(String): void;
 
 native class String {
+  @intrinsic
   native fun +(this): this;
 }
+
+// A Skip Char represents a single Unicode Code Point which represents a valid
+// Unicode character. A Char cannot represent a Unicode (high or low) surrogate code point.
+// code() returns a value in the ranges: U+0000–U+D7FF and U+E000–U+10FFFF.
+// Note that this differs from most languages in which the char type
+// represents a single 8 or 16-bit code unit.
+native value class Char {
+  @intrinsic
+  native fun ==(other: Char): Bool;
+  @intrinsic
+  native fun !=(other: Char): Bool;
+  @intrinsic
+  native fun >=(other: Char): Bool;
+  @intrinsic
+  native fun <=(other: Char): Bool;
+  @intrinsic
+  native fun >(other: Char): Bool;
+  @intrinsic
+  native fun <(other: Char): Bool;
+  @intrinsic
+  native fun code(): Int;
+
+  fun capitalize(): Char {
+    this match {
+    | 'a' -> 'A'
+    | 'b' -> 'B'
+    | 'c' -> 'C'
+    | 'd' -> 'D'
+    | 'e' -> 'E'
+    | 'f' -> 'F'
+    | 'g' -> 'G'
+    | 'h' -> 'H'
+    | 'i' -> 'I'
+    | 'j' -> 'J'
+    | 'k' -> 'K'
+    | 'l' -> 'L'
+    | 'm' -> 'M'
+    | 'n' -> 'N'
+    | 'o' -> 'O'
+    | 'p' -> 'P'
+    | 'q' -> 'Q'
+    | 'r' -> 'R'
+    | 's' -> 'S'
+    | 't' -> 'T'
+    | 'u' -> 'U'
+    | 'v' -> 'V'
+    | 'w' -> 'W'
+    | 'x' -> 'X'
+    | 'y' -> 'Y'
+    | 'z' -> 'Z'
+    | _ -> this
+    }
+  }
+
+  fun uncapitalize(): Char {
+    this match {
+    | 'A' -> 'a'
+    | 'B' -> 'b'
+    | 'C' -> 'c'
+    | 'D' -> 'd'
+    | 'E' -> 'e'
+    | 'F' -> 'f'
+    | 'G' -> 'g'
+    | 'H' -> 'h'
+    | 'I' -> 'i'
+    | 'J' -> 'j'
+    | 'K' -> 'k'
+    | 'L' -> 'l'
+    | 'M' -> 'm'
+    | 'N' -> 'n'
+    | 'O' -> 'o'
+    | 'P' -> 'p'
+    | 'Q' -> 'q'
+    | 'R' -> 'r'
+    | 'S' -> 's'
+    | 'T' -> 't'
+    | 'U' -> 'u'
+    | 'V' -> 'v'
+    | 'W' -> 'w'
+    | 'X' -> 'x'
+    | 'Y' -> 'y'
+    | 'Z' -> 'z'
+    | _ -> this
+    }
+  }
+}
+
+native value class Float {
+  @intrinsic
+  native fun ==(other: Float): Bool;
+  @intrinsic
+  native fun !=(other: Float): Bool;
+  @intrinsic
+  native fun +(other: Float): Float;
+  @intrinsic
+  native fun -(other: Float): Float;
+  @intrinsic
+  native fun *(other: Float): Float;
+  @intrinsic
+  native fun /(other: Float): Float;
+  @intrinsic
+  native fun <(other: Float): Bool;
+  @intrinsic
+  native fun >(other: Float): Bool;
+  @intrinsic
+  native fun <=(other: Float): Bool;
+  @intrinsic
+  native fun >=(other: Float): Bool;
+}
+
 native value class Int {
+  @intrinsic
   native fun ==(Int): Bool;
+  @intrinsic
   native fun !=(Int): Bool;
+  @intrinsic
   native fun +(Int): Int;
+  @intrinsic
   native fun -(Int): Int;
+  @intrinsic
   native fun *(Int): Int;
+  @intrinsic
   native fun /(Int): Int;
+  @intrinsic
   native fun %(Int): Int;
+  @intrinsic
   native fun <(Int): Bool;
+  @intrinsic
   native fun >(Int): Bool;
+  @intrinsic
   native fun <=(Int): Bool;
+  @intrinsic
   native fun >=(Int): Bool;
 }
 native value class Void
 
 native value class Bool {
+  @intrinsic
   native fun !(): Bool;
+  @intrinsic
   native fun ==(Bool): Bool;
+  @intrinsic
   native fun !=(Bool): Bool;
+  @intrinsic
   native fun <(Bool): Bool;
+  @intrinsic
   native fun >(Bool): Bool;
+  @intrinsic
   native fun <=(Bool): Bool;
+  @intrinsic
   native fun >=(Bool): Bool;
+  @intrinsic
   native fun toString(): String;
 }
+
+native value class Int16 {
+  @intrinsic
+  native fun toInt(): Int;
+  @intrinsic
+  native static fun truncate(n: Int): Int16;
+  const min: Int16 = Int16::truncate(-0x8000);
+  const max: Int16 = Int16::truncate(0x7FFF);
+}
+
+native value class Int32 {
+  @intrinsic
+  native fun toInt(): Int;
+  @intrinsic
+  native static fun truncate(n: Int): Int32;
+  const min: Int32 = Int32::truncate(-0x80000000);
+  const max: Int32 = Int32::truncate(0x7FFFFFFF);
+}
+
+native value class Int8 {
+  @intrinsic
+  native fun toInt(): Int;
+  @intrinsic
+  native static fun truncate(n: Int): Int8;
+  const min: Int8 = Int8::truncate(-0x80);
+  const max: Int8 = Int8::truncate(0x7F);
+}
+
+
+
 native base class Class<+T> {
   children =
   | Concrete
@@ -80,3 +246,19 @@ native base class Class<+T> {
     !(this == c2)
   }
 }
+
+module Runtime;
+
+// Dummy class indicating an opaque pointer analogous to "void*"
+// A real (untyped) skip object that the GC understands
+native value class GCPointer
+
+// A pointer to random non-GC'd memory
+native value class NonGCPointer {
+  @intrinsic
+  static native fun zero(): NonGCPointer;
+}
+
+private mutable class LocalVariable<T>(mutable value: T)
+
+module end;

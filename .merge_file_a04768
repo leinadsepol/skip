@@ -325,10 +325,6 @@ private fun allocateBestSlot(
 
   align = request.mapping[0].i1.typ.getScalarType(env).bitAlignment;
 
-  if (align < 64) {
-    !align = 64;
-  };
-
   bestBitOffset = -1;
   bestCost = Int::max;
 
